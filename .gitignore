@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Build outputs
+build/
+dist/
+*.spec~
+*.zip
+
+# VoiceScript runtime outputs
+transcripts/
+models/
+.models/
+.cache/
+*.log
+
+# Model caches and weights should never be committed
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.bin
+*.gguf
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
