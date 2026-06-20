@@ -1,14 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_submodules
+from voicescript.build_support import collect_asr_datas, collect_asr_hiddenimports
 
-hiddenimports = collect_submodules("voicescript")
+hiddenimports = collect_asr_hiddenimports()
+datas = collect_asr_datas()
 
 a = Analysis(
     ["voicescript/desktop/app.py"],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},

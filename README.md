@@ -21,7 +21,9 @@ VoiceScript is a local-first Windows desktop tool for turning uploaded audio fil
 
 The target machine currently has an RTX 3060 Laptop GPU with about 4GB VRAM. VoiceScript keeps the selected model identity, but it may fall back to CPU or low-batch behavior when GPU memory is too small for `Whisper large-v3` or Qwen timestamp alignment. CPU fallback is slower, especially for long audio.
 
-For multi-hour audio, v0.1.1 shows chunk-level progress while transcription is running. First model download can still take time because model weights are not bundled in the release.
+For multi-hour audio, v0.1.1 and later show chunk-level progress while transcription is running. First model download can still take time because model weights are not bundled in the release.
+
+v0.1.2 fixes the Windows package so Whisper and Qwen runtime assets are included in the app folder. Model weights are still downloaded into the user cache instead of being committed or bundled.
 
 ## Quick Start
 
@@ -51,7 +53,7 @@ Command-line transcription:
 .\scripts\build-windows.ps1
 ```
 
-The release folder is generated under `dist\VoiceScript`.
+The local development release folder is generated under `F:\声笺录\VoiceScript\dist\VoiceScript`.
 
 ## What V1 Intentionally Does Not Do
 

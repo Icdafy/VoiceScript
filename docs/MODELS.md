@@ -8,11 +8,15 @@ On GPUs with less than about 10GB VRAM, VoiceScript uses CPU fallback before loa
 
 As of v0.1.1, long files are split into 60-second WAV chunks for Whisper. Each chunk is transcribed with `large-v3`, then segment and word timestamps are shifted back onto the original absolute timeline.
 
+As of v0.1.2, the Windows package includes Whisper's runtime assets, including mel filters and tokenizer files. Model weights are still downloaded to the user's cache on first use.
+
 ## Qwen3-ASR-1.7B
 
 VoiceScript calls `Qwen/Qwen3-ASR-1.7B` through the `qwen-asr` transformers backend. For timestamps, it loads `Qwen/Qwen3-ForcedAligner-0.6B`.
 
 On GPUs with less than about 8GB VRAM, VoiceScript uses CPU fallback. Long audio is split into 170-second WAV chunks for timestamp-safe forced alignment, then merged back into one absolute timeline.
+
+As of v0.1.2, the Windows package includes Qwen's forced-alignment runtime dictionary and collects Qwen modules without importing the top-level package during packaging. This avoids the nagisa/DyNet Windows path issue during build collection.
 
 ## Output Rule
 
