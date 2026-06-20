@@ -127,10 +127,19 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
     }}
     QComboBox {{
         min-height: 42px;
-        padding: 0 14px;
+        padding: 0 34px 0 14px;
         border: 1px solid {token.border};
         border-radius: 8px;
         background: {token.surface};
+    }}
+    QComboBox::drop-down {{
+        border: none;
+        width: 34px;
+    }}
+    QComboBox::down-arrow {{
+        image: none;
+        width: 0;
+        height: 0;
     }}
     QCheckBox::indicator {{
         width: 42px;

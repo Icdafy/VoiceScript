@@ -6,8 +6,8 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QFont, QFontDatabase
+from PySide6.QtCore import QSize, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -81,7 +81,7 @@ class UploadDropZone(QFrame):
         super().__init__()
         self.setObjectName("UploadDropZone")
         self.setAcceptDrops(True)
-        self.setMinimumHeight(270)
+        self.setMinimumHeight(230)
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(14)
@@ -124,6 +124,48 @@ class UploadDropZone(QFrame):
             if url.isLocalFile():
                 self.file_dropped.emit(url.toLocalFile())
                 break
+
+
+class ToggleSwitch(QCheckBox):
+    def __init__(self) -> None:
+        super().__init__()
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(52, 28)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def sizeHint(self) -> QSize:  # type: ignore[override]
+        return QSize(52, 28)
+
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        track = QColor("#3f76ff" if self.isChecked() else "#b7bfcd")
+        if not self.isEnabled():
+            track = QColor("#aab3c2")
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(track)
+        track_rect = self.rect().adjusted(1, 2, -1, -2)
+        painter.drawRoundedRect(track_rect, 12, 12)
+
+        knob_size = 22
+        knob_y = track_rect.center().y() - knob_size // 2
+        knob_x = track_rect.right() - knob_size - 2 if self.isChecked() else track_rect.left() + 2
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawEllipse(knob_x, knob_y, knob_size, knob_size)
+
+
+class StyledComboBox(QComboBox):
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("#63708a"), 1.6))
+        center_x = self.width() - 22
+        center_y = self.height() // 2 + 1
+        painter.drawLine(center_x - 5, center_y - 3, center_x, center_y + 2)
+        painter.drawLine(center_x, center_y + 2, center_x + 5, center_y - 3)
 
 
 class MainWindow(QMainWindow):
@@ -315,9 +357,9 @@ class MainWindow(QMainWindow):
 
         self.language_combo = self._combo(["中文（普通话）", "自动识别", "English", "粤语"])
         self.model_combo = self._combo(["标准模型（推荐）", "精准模型"])
-        self.speaker_check = QCheckBox()
+        self.speaker_check = ToggleSwitch()
         self.speaker_check.setEnabled(False)
-        self.punctuation_check = QCheckBox()
+        self.punctuation_check = ToggleSwitch()
         self.punctuation_check.setChecked(True)
         self.format_combo = self._combo(["TXT 文本格式", "Markdown", "SRT 字幕", "JSON 数据", "全部格式"])
 
@@ -349,7 +391,7 @@ class MainWindow(QMainWindow):
         return panel
 
     def _combo(self, items: list[str]) -> QComboBox:
-        combo = QComboBox()
+        combo = StyledComboBox()
         combo.addItems(items)
         return combo
 
