@@ -31,7 +31,12 @@ from voicescript.backends.whisper_backend import WHISPER_MODEL_KEY
 from voicescript.core.audio import SUPPORTED_AUDIO_EXTENSIONS, is_supported_audio_file
 from voicescript.core.environment import check_environment
 from voicescript.core.exporters import export_transcript, format_clock
-from voicescript.core.settings import default_settings
+from voicescript.core.runtime import ensure_std_streams
+from voicescript.core.settings import (
+    default_settings,
+    load_preferences,
+    save_preferences,
+)
 from voicescript.core.transcript import Transcript
 from voicescript.desktop.theme import ThemeMode, build_stylesheet
 from voicescript.desktop.worker import TranscriptionWorker
@@ -73,11 +78,17 @@ class DropZone(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, *, auto_start_on_file_select: bool = True) -> None:
+    def __init__(self, *, auto_start_on_file_select: bool = False) -> None:
         super().__init__()
         self.settings = default_settings()
         self.auto_start_on_file_select = auto_start_on_file_select
-        self.theme_mode = ThemeMode.BLACK
+        self.preferences = load_preferences(self.settings.cache_dir)
+        self.theme_mode = (
+            ThemeMode.WHITE if self.preferences.theme == "white" else ThemeMode.BLACK
+        )
+        self.custom_output_dir: Path | None = (
+            Path(self.preferences.output_dir) if self.preferences.output_dir else None
+        )
         self.audio_path: Path | None = None
         self.transcript: Transcript | None = None
         self.worker: TranscriptionWorker | None = None
@@ -86,6 +97,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._apply_theme()
         self._refresh_environment()
+        self._refresh_output_dir_label()
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -143,6 +155,14 @@ class MainWindow(QMainWindow):
         self.obsidian_button.setEnabled(False)
         self.obsidian_button.clicked.connect(self._save_to_obsidian)
 
+        self.output_dir_button = QPushButton("设置保存位置")
+        self.output_dir_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon))
+        self.output_dir_button.clicked.connect(self._choose_output_dir)
+
+        self.output_dir_label = QLabel("")
+        self.output_dir_label.setWordWrap(True)
+        self.output_dir_label.setObjectName("Muted")
+
         self.env_label = QLabel("")
         self.env_label.setWordWrap(True)
         self.env_label.setObjectName("Muted")
@@ -156,6 +176,8 @@ class MainWindow(QMainWindow):
             self.cancel_button,
             self.export_button,
             self.obsidian_button,
+            self.output_dir_button,
+            self.output_dir_label,
         ]:
             side_layout.addWidget(widget)
         side_layout.addStretch(1)
@@ -209,6 +231,35 @@ class MainWindow(QMainWindow):
     def _toggle_theme(self) -> None:
         self.theme_mode = ThemeMode.WHITE if self.theme_mode == ThemeMode.BLACK else ThemeMode.BLACK
         self._apply_theme()
+        self._persist_preferences()
+
+    def _persist_preferences(self) -> None:
+        self.preferences.theme = (
+            "white" if self.theme_mode == ThemeMode.WHITE else "black"
+        )
+        self.preferences.output_dir = (
+            str(self.custom_output_dir) if self.custom_output_dir else None
+        )
+        try:
+            save_preferences(self.settings.cache_dir, self.preferences)
+        except OSError:
+            pass
+
+    def _refresh_output_dir_label(self) -> None:
+        if self.custom_output_dir:
+            self.output_dir_label.setText(f"保存位置：{self.custom_output_dir}")
+        else:
+            self.output_dir_label.setText("保存位置：导出时选择文件夹")
+
+    def _choose_output_dir(self) -> None:
+        start_dir = str(self.custom_output_dir or self.settings.default_export_dir)
+        directory = QFileDialog.getExistingDirectory(self, "设置转录文字保存位置", start_dir)
+        if not directory:
+            return
+        self.custom_output_dir = Path(directory)
+        self._refresh_output_dir_label()
+        self._persist_preferences()
+        self.statusBar().showMessage(f"已设置保存位置：{directory}", 5000)
 
     def _refresh_environment(self) -> None:
         report = check_environment(self.settings.cache_dir)
@@ -243,12 +294,14 @@ class MainWindow(QMainWindow):
         self.audio_path = Path(path)
         self.transcript = None
         self.file_label.setText(str(self.audio_path))
-        self.status_label.setText("音频已选择，正在启动转录任务。")
         self.export_button.setEnabled(False)
         self.obsidian_button.setEnabled(False)
         self.table.setRowCount(0)
         if self.auto_start_on_file_select:
+            self.status_label.setText("音频已选择，正在启动转录任务。")
             self._start_transcription()
+        else:
+            self.status_label.setText('音频已选择，请点击"开始转录"按钮。')
 
     def _start_transcription(self) -> None:
         if not self.audio_path:
@@ -311,11 +364,15 @@ class MainWindow(QMainWindow):
     def _export_files(self) -> None:
         if not self.transcript:
             return
-        directory = QFileDialog.getExistingDirectory(self, "选择导出文件夹", str(self.settings.default_export_dir))
-        if not directory:
-            return
-        paths = export_transcript(self.transcript, Path(directory))
-        self.statusBar().showMessage(f"Exported {len(paths)} files to {directory}", 6000)
+        if self.custom_output_dir:
+            directory = self.custom_output_dir
+        else:
+            directory_str = QFileDialog.getExistingDirectory(self, "选择导出文件夹", str(self.settings.default_export_dir))
+            if not directory_str:
+                return
+            directory = Path(directory_str)
+        paths = export_transcript(self.transcript, directory)
+        self.statusBar().showMessage(f"已导出文件到：{directory}", 6000)
 
     def _save_to_obsidian(self) -> None:
         if not self.transcript:
@@ -325,6 +382,7 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
+    ensure_std_streams()
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()

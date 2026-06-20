@@ -6,6 +6,8 @@ from PySide6.QtCore import QThread, Signal
 
 from voicescript.backends.base import TranscriptionProgress
 from voicescript.cli import select_backend
+from voicescript.core.runtime import ensure_std_streams
+from voicescript.core.runtime import ensure_std_streams
 
 
 class TranscriptionWorker(QThread):
@@ -24,6 +26,7 @@ class TranscriptionWorker(QThread):
 
     def run(self) -> None:
         try:
+            ensure_std_streams()
             backend = select_backend(self.model_key)
             progress = TranscriptionProgress(
                 callback=lambda message, value=None: self.progress.emit(message, value),
