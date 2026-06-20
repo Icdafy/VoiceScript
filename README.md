@@ -7,6 +7,8 @@ VoiceScript is a local-first Windows desktop tool for turning uploaded audio fil
 ## V1 Features
 
 - Upload full audio files from Apple and Android workflows: `.m4a`, `.aac`, `.caf`, `.amr`, `.3gp`, `.ogg`, `.opus`, `.mp3`, `.wav`, `.flac`.
+- Uploaded audio starts transcription automatically with the currently selected model.
+- Long audio is processed in chunks so the UI keeps reporting progress instead of looking frozen.
 - Choose between two strongest configured ASR options:
   - `Whisper large-v3` from OpenAI Whisper.
   - `Qwen3-ASR-1.7B` with `Qwen3-ForcedAligner-0.6B` timestamps.
@@ -18,6 +20,8 @@ VoiceScript is a local-first Windows desktop tool for turning uploaded audio fil
 ## Hardware Note
 
 The target machine currently has an RTX 3060 Laptop GPU with about 4GB VRAM. VoiceScript keeps the selected model identity, but it may fall back to CPU or low-batch behavior when GPU memory is too small for `Whisper large-v3` or Qwen timestamp alignment. CPU fallback is slower, especially for long audio.
+
+For multi-hour audio, v0.1.1 shows chunk-level progress while transcription is running. First model download can still take time because model weights are not bundled in the release.
 
 ## Quick Start
 

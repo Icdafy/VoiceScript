@@ -73,9 +73,10 @@ class DropZone(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, *, auto_start_on_file_select: bool = True) -> None:
         super().__init__()
         self.settings = default_settings()
+        self.auto_start_on_file_select = auto_start_on_file_select
         self.theme_mode = ThemeMode.BLACK
         self.audio_path: Path | None = None
         self.transcript: Transcript | None = None
@@ -236,13 +237,18 @@ class MainWindow(QMainWindow):
         if not is_supported_audio_file(path):
             QMessageBox.warning(self, "格式不支持", f"暂不支持该格式：{path.suffix}")
             return
+        if self.worker and self.worker.isRunning():
+            QMessageBox.information(self, "正在转录", "当前转录任务仍在运行，请先取消或等待完成。")
+            return
         self.audio_path = Path(path)
         self.transcript = None
         self.file_label.setText(str(self.audio_path))
-        self.status_label.setText("音频已选择。选择模型后点击开始转录。")
+        self.status_label.setText("音频已选择，正在启动转录任务。")
         self.export_button.setEnabled(False)
         self.obsidian_button.setEnabled(False)
         self.table.setRowCount(0)
+        if self.auto_start_on_file_select:
+            self._start_transcription()
 
     def _start_transcription(self) -> None:
         if not self.audio_path:

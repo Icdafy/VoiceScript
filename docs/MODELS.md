@@ -6,6 +6,8 @@ VoiceScript calls official OpenAI Whisper with model id `large-v3`, task `transc
 
 On GPUs with less than about 10GB VRAM, VoiceScript uses CPU fallback before loading the model.
 
+As of v0.1.1, long files are split into 60-second WAV chunks for Whisper. Each chunk is transcribed with `large-v3`, then segment and word timestamps are shifted back onto the original absolute timeline.
+
 ## Qwen3-ASR-1.7B
 
 VoiceScript calls `Qwen/Qwen3-ASR-1.7B` through the `qwen-asr` transformers backend. For timestamps, it loads `Qwen/Qwen3-ForcedAligner-0.6B`.
