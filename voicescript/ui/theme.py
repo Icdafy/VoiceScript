@@ -89,6 +89,13 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
     #RootFrame {{
         background: {t.background};
     }}
+    #ContentScroll {{
+        background: transparent;
+        border: none;
+    }}
+    #ContentScroll > QWidget {{
+        background: {t.background};
+    }}
     #Sidebar {{
         background: {t.surface};
         border-right: 1px solid {t.border_soft};
@@ -161,14 +168,6 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
     }}
     #IconButton:hover {{
         background: {t.nav_hover};
-    }}
-    #AvatarButton {{
-        background: {t.surface_muted};
-        border: 1px solid {t.border};
-        border-radius: 12px;
-    }}
-    #AvatarButton:hover {{
-        border: 1px solid {t.primary};
     }}
     QPushButton#NavButton {{
         background: transparent;

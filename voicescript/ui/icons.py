@@ -9,8 +9,8 @@ light and dark themes and as active/inactive navigation states.
 
 from functools import lru_cache
 
-from PySide6.QtCore import QByteArray, Qt
-from PySide6.QtGui import QIcon, QPainter, QPixmap
+from PySide6.QtCore import QByteArray, QRectF
+from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
 # Each entry is the inner body of a 0 0 24 24 SVG. `{c}` is replaced with the
@@ -46,11 +46,18 @@ _PATHS: dict[str, str] = {
         '<path d="M12 7.6V12l3 1.8"/></g>'
     ),
     "gear": (
-        '<g stroke="{c}" stroke-width="2" stroke-linecap="round" '
+        '<g stroke="{c}" stroke-width="1.8" stroke-linecap="round" '
         'stroke-linejoin="round" fill="none">'
-        '<circle cx="12" cy="12" r="3"/>'
-        '<path d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3M18.4 5.6l-1.6 1.6'
-        'M7.2 16.8l-1.6 1.6M18.4 18.4l-1.6-1.6M7.2 7.2 5.6 5.6"/></g>'
+        '<circle cx="12" cy="12" r="3.2"/>'
+        '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83'
+        'l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1'
+        '-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0'
+        ' 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1'
+        'H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82'
+        'l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 '
+        '1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65'
+        ' 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0'
+        '-.33 1.82V15z"/></g>'
     ),
     "help": (
         '<g stroke="{c}" stroke-width="2" stroke-linecap="round" '
@@ -158,14 +165,20 @@ def icon_svg(name: str, color: str) -> str:
 
 @lru_cache(maxsize=256)
 def icon_pixmap(name: str, color: str, size: int = 22, ratio: int = 2) -> QPixmap:
-    renderer = QSvgRenderer(QByteArray(icon_svg(name, color).encode("utf-8")))
-    pixmap = QPixmap(size * ratio, size * ratio)
-    pixmap.setDevicePixelRatio(ratio)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
+    # Paint into a plain (DPR=1) image so the SVG fills the whole canvas, then
+    # tag the resulting pixmap with the device-pixel-ratio for crisp HiDPI
+    # display. Setting the ratio *before* painting shrinks the viewport and is
+    # what previously clipped icons into a corner.
+    edge = size * ratio
+    image = QImage(edge, edge, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    renderer.render(painter)
+    renderer = QSvgRenderer(QByteArray(icon_svg(name, color).encode("utf-8")))
+    renderer.render(painter, QRectF(0, 0, edge, edge))
     painter.end()
+    pixmap = QPixmap.fromImage(image)
+    pixmap.setDevicePixelRatio(ratio)
     return pixmap
 
 

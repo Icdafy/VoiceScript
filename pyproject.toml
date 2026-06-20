@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voicescript"
-version = "0.2.1"
+version = "0.2.2"
 description = "VoiceScript 声笺录 Windows desktop ASR transcription app"
 readme = "README.md"
 requires-python = ">=3.12"
