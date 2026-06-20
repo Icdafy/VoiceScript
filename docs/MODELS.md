@@ -1,41 +1,21 @@
-# ASR Model Notes
+# 模型说明
 
-## Whisper large-v3
+VoiceScript v0.2.0 只接入 Qwen3-ASR，不沿用 v0.1.x 的 Whisper 代码。
 
-VoiceScript calls official OpenAI Whisper with model id `large-v3`, task `transcribe`, and word timestamps enabled. It does not use `turbo` because V1 explicitly targets `Whisper-large-V3`.
+## 标准模型
 
-On GPUs with less than about 10GB VRAM, VoiceScript uses CPU fallback before loading the model.
+- ASR：`Qwen/Qwen3-ASR-0.6B`
+- 时间戳：`Qwen/Qwen3-ForcedAligner-0.6B`
+- UI 名称：标准模型
+- 默认选择，适合 6GB 显存机器优先跑通。
 
-As of v0.1.1, long files are split into 60-second WAV chunks for Whisper. Each chunk is transcribed with `large-v3`, then segment and word timestamps are shifted back onto the original absolute timeline.
+## 精准模型
 
-As of v0.1.2, the Windows package includes Whisper's runtime assets, including mel filters and tokenizer files. Model weights are still downloaded to the user's cache on first use.
+- ASR：`Qwen/Qwen3-ASR-1.7B`
+- 时间戳：`Qwen/Qwen3-ForcedAligner-0.6B`
+- UI 名称：精准模型
+- 准确率优先，资源占用更高。
 
-As of v0.1.3, VoiceScript removes broken zero-byte Whisper checkpoints and downloads `large-v3` with a streaming HTTP downloader that reports progress in the UI.
+## 输出原则
 
-## Qwen3-ASR-1.7B
-
-VoiceScript calls `Qwen/Qwen3-ASR-1.7B` through the `qwen-asr` transformers backend. For timestamps, it loads `Qwen/Qwen3-ForcedAligner-0.6B`.
-
-On GPUs with less than about 8GB VRAM, VoiceScript uses CPU fallback. Long audio is split into 170-second WAV chunks for timestamp-safe forced alignment, then merged back into one absolute timeline.
-
-As of v0.1.2, the Windows package includes Qwen's forced-alignment runtime dictionary and collects Qwen modules without importing the top-level package during packaging. This avoids the nagisa/DyNet Windows path issue during build collection.
-
-As of v0.1.3, VoiceScript explicitly checks/downloads both `Qwen/Qwen3-ASR-1.7B` and `Qwen/Qwen3-ForcedAligner-0.6B` before model initialization, so first-run setup shows progress instead of appearing stuck at model loading.
-
-## Output Rule
-
-Both backends normalize into the same schema:
-
-```json
-{
-  "model": "whisper-large-v3",
-  "source_file": "audio.m4a",
-  "duration": 123.4,
-  "language": "zh",
-  "segments": [
-    { "start": 0.0, "end": 4.2, "text": "recognized speech" }
-  ]
-}
-```
-
-Exporters only format this text. They do not summarize or rewrite it.
+模型输出统一转换为 `TranscriptDocument`。导出器只写时间戳和识别文字，不生成总结、纪要、摘要、语义标签或说话人分离结果。

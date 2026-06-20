@@ -1,20 +1,12 @@
-# Third-Party Notices
+# Notices
 
-VoiceScript integrates with open-source ASR projects but does not vendor or commit their model weights.
+VoiceScript 声笺录 v0.2.0 is an original rewrite by Icdafy.
 
-## OpenAI Whisper
+Third-party runtime dependencies include:
 
-- Repository: https://github.com/openai/whisper
-- Configured model: `large-v3`
-- Local source reference during development: `F:\声笺录\whisper-20250625`
-- License: MIT
+- Qwen3-ASR and `qwen-asr`, Apache-2.0: <https://github.com/QwenLM/Qwen3-ASR>
+- PySide6 / Qt for Python, LGPL/commercial terms: <https://doc.qt.io/qtforpython/>
+- PyTorch: <https://pytorch.org/>
+- FFmpeg is required at runtime but is not bundled in this repository.
 
-## Qwen3-ASR
-
-- Repository: https://github.com/QwenLM/Qwen3-ASR
-- Configured ASR model: `Qwen/Qwen3-ASR-1.7B`
-- Configured timestamp model: `Qwen/Qwen3-ForcedAligner-0.6B`
-- Python package: `qwen-asr==0.0.6`
-- License: Apache-2.0
-
-Model weights are downloaded into user cache directories at runtime/setup time and are intentionally excluded from this repository and release artifacts.
+Model weights are downloaded by the runtime package and are not included in this repository or release artifact.

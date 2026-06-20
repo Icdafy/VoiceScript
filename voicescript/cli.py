@@ -1,101 +1,77 @@
 from __future__ import annotations
 
 import argparse
-import json
+import os
+import shutil
+import sys
 from pathlib import Path
 
-from voicescript.backends.base import TranscriptionProgress
-from voicescript.backends.qwen_backend import QWEN_MODEL_KEY, QwenBackend
-from voicescript.backends.whisper_backend import WHISPER_MODEL_KEY, WhisperBackend
-from voicescript.core.environment import check_environment
-from voicescript.core.exporters import SUPPORTED_EXPORT_FORMATS, export_transcript
-from voicescript.core.settings import default_settings
+from voicescript import __version__
+from voicescript.asr.mock import MockAsrBackend
+from voicescript.asr.qwen import QwenAsrBackend, normalize_profile
+from voicescript.audio.probe import SUPPORTED_AUDIO_EXTENSIONS, probe_audio
+from voicescript.export.formats import normalize_formats, write_exports
+from voicescript.models import TranscriptionJobConfig
+from voicescript.runtime import ensure_std_streams
 
 
-MODEL_CHOICES = (WHISPER_MODEL_KEY, QWEN_MODEL_KEY)
-
-
-def build_parser() -> argparse.ArgumentParser:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="voicescript")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    env_parser = subparsers.add_parser("env", help="check local runtime environment")
-    env_parser.add_argument("--cache-dir", type=Path, default=None)
+    subparsers.add_parser("env", help="check local runtime")
 
-    transcribe = subparsers.add_parser("transcribe", help="transcribe one uploaded audio file")
-    transcribe.add_argument("--model", choices=MODEL_CHOICES, required=True)
-    transcribe.add_argument("--input", type=Path, required=True)
-    transcribe.add_argument("--out", type=Path, required=True)
-    transcribe.add_argument(
-        "--formats",
-        default="md,txt,srt,json",
-        help="comma-separated export formats: md,txt,srt,json",
-    )
-    transcribe.add_argument("--obsidian", action="store_true", help="also export markdown to Obsidian")
-    transcribe.add_argument("--obsidian-dir", type=Path, default=None)
+    transcribe = subparsers.add_parser("transcribe", help="transcribe an audio file")
+    transcribe.add_argument("--input", required=True, type=Path)
+    transcribe.add_argument("--out", required=True, type=Path)
+    transcribe.add_argument("--formats", default="txt")
+    transcribe.add_argument("--model", default="standard", choices=["standard", "precise"])
+    transcribe.add_argument("--language", default="auto")
+    transcribe.add_argument("--no-punctuation", action="store_true")
     return parser
 
 
-def select_backend(model_key: str):
-    if model_key == WHISPER_MODEL_KEY:
-        return WhisperBackend()
-    if model_key == QWEN_MODEL_KEY:
-        return QwenBackend()
-    raise ValueError(f"unknown model: {model_key}")
-
-
-def _parse_formats(raw: str) -> tuple[str, ...]:
-    formats = tuple(part.strip().lower() for part in raw.split(",") if part.strip())
-    unsupported = [fmt for fmt in formats if fmt not in SUPPORTED_EXPORT_FORMATS]
-    if unsupported:
-        raise ValueError(f"unsupported export formats: {', '.join(unsupported)}")
-    return formats
-
-
-def run_transcribe_command(args, *, backend=None) -> dict[str, Path]:
-    backend = backend or select_backend(args.model)
-    progress = TranscriptionProgress(callback=lambda message, value=None: print(message))
-    transcript = backend.transcribe(Path(args.input), progress=progress)
-    paths = export_transcript(transcript, Path(args.out), formats=_parse_formats(args.formats))
-    if getattr(args, "obsidian", False):
-        settings = default_settings()
-        obsidian_dir = Path(args.obsidian_dir or settings.obsidian_dir)
-        export_transcript(transcript, obsidian_dir, formats=("md", "json"))
-    return paths
-
-
-def run_env_command(args) -> int:
-    report = check_environment(cache_dir=args.cache_dir)
-    print(json.dumps(_environment_to_dict(report), ensure_ascii=False, indent=2))
+def _run_env() -> int:
+    print(f"VoiceScript {__version__}")
+    print(f"Python {sys.version.split()[0]}")
+    print(f"ffmpeg: {shutil.which('ffmpeg') or 'missing'}")
+    print(f"ffprobe: {shutil.which('ffprobe') or 'missing'}")
+    print("Supported:", ", ".join(sorted(SUPPORTED_AUDIO_EXTENSIONS)))
     return 0
 
 
-def _environment_to_dict(report) -> dict:
-    return {
-        "python": report.python.__dict__,
-        "ffmpeg": report.ffmpeg.__dict__,
-        "ffprobe": report.ffprobe.__dict__,
-        "torch": report.torch.__dict__,
-        "cache_dir": str(report.cache_dir),
-        "disk_free_bytes": report.disk_free_bytes,
-        "platform": report.platform,
-        "warnings": report.warnings,
-    }
+def _backend(model: str):
+    if os.environ.get("VOICESCRIPT_USE_MOCK_ASR") == "1":
+        return MockAsrBackend()
+    return QwenAsrBackend(normalize_profile(model))
+
+
+def _run_transcribe(args: argparse.Namespace) -> int:
+    audio = probe_audio(args.input)
+    formats = normalize_formats(tuple(part.strip() for part in args.formats.split(",")))
+    config = TranscriptionJobConfig(
+        input_file=audio.path,
+        language=args.language,
+        model_profile=args.model,
+        output_dir=args.out,
+        output_formats=formats,
+        restore_punctuation=not args.no_punctuation,
+    )
+    backend = _backend(args.model)
+    doc = backend.transcribe(config, lambda value, message: print(f"{value:.0%} {message}"))
+    written = write_exports(doc, config.output_dir, formats, config.restore_punctuation)
+    for path in written:
+        print(path)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+    ensure_std_streams()
+    parser = _build_parser()
     args = parser.parse_args(argv)
     if args.command == "env":
-        return run_env_command(args)
+        return _run_env()
     if args.command == "transcribe":
-        paths = run_transcribe_command(args)
-        for fmt, path in paths.items():
-            print(f"{fmt}: {path}")
-        return 0
+        return _run_transcribe(args)
     parser.error(f"unknown command: {args.command}")
     return 2
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -1,47 +1,44 @@
-import unittest
 from pathlib import Path
 
-from voicescript.core.transcript import Segment, Transcript, Word
+import pytest
+
+from voicescript.models import TranscriptDocument, TranscriptSegment
 
 
-class TranscriptSchemaTests(unittest.TestCase):
-    def test_transcript_accepts_ordered_segments_and_words(self):
-        transcript = Transcript(
-            model="whisper-large-v3",
-            source_file=Path("sample.m4a"),
-            duration=3.0,
-            language="zh",
+def test_transcript_document_rejects_out_of_order_segments():
+    with pytest.raises(ValueError, match="ordered"):
+        TranscriptDocument(
+            source_file=Path("meeting.m4a"),
+            duration_sec=8.0,
+            language="Chinese",
+            model="Qwen/Qwen3-ASR-0.6B",
             segments=[
-                Segment(
-                    start=0.0,
-                    end=1.25,
-                    text="hello",
-                    words=[Word(start=0.0, end=0.4, text="hello")],
-                ),
-                Segment(start=1.25, end=3.0, text="world"),
+                TranscriptSegment(index=1, start_sec=4.0, end_sec=5.0, text="第二段"),
+                TranscriptSegment(index=2, start_sec=3.0, end_sec=4.0, text="第一段"),
             ],
         )
 
-        self.assertEqual(transcript.text, "hello\nworld")
-        self.assertEqual(transcript.segments[0].words[0].text, "hello")
 
-    def test_segment_rejects_invalid_time_range(self):
-        with self.assertRaises(ValueError):
-            Segment(start=4.0, end=3.0, text="bad")
+def test_transcript_document_exposes_only_raw_transcript_fields():
+    doc = TranscriptDocument(
+        source_file=Path("会议记录.m4a"),
+        duration_sec=2.0,
+        language="Chinese",
+        model="Qwen/Qwen3-ASR-0.6B",
+        segments=[
+            TranscriptSegment(index=1, start_sec=0.0, end_sec=2.0, text="今天开始讨论项目进展。"),
+        ],
+    )
 
-    def test_transcript_rejects_out_of_order_segments(self):
-        with self.assertRaises(ValueError):
-            Transcript(
-                model="qwen3-asr-1.7b",
-                source_file=Path("sample.opus"),
-                duration=10.0,
-                language="Chinese",
-                segments=[
-                    Segment(start=3.0, end=4.0, text="late"),
-                    Segment(start=2.0, end=3.0, text="early"),
-                ],
-            )
+    payload = doc.to_dict()
 
-
-if __name__ == "__main__":
-    unittest.main()
+    assert payload["text"] == "今天开始讨论项目进展。"
+    assert "summary" not in payload
+    assert "minutes" not in payload
+    assert "abstract" not in payload
+    assert payload["segments"][0] == {
+        "index": 1,
+        "start_sec": 0.0,
+        "end_sec": 2.0,
+        "text": "今天开始讨论项目进展。",
+    }

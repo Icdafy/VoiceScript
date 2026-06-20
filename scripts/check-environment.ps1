@@ -1,11 +1,13 @@
-param(
-    [string]$CacheDir = "$env:USERPROFILE\.cache\voicescript"
-)
-
 $ErrorActionPreference = "Stop"
-$python = Join-Path $PSScriptRoot "..\.venv\Scripts\python.exe"
+
+$root = Split-Path -Parent $PSScriptRoot
+$python = Join-Path $root ".venv\Scripts\python.exe"
+
 if (-not (Test-Path $python)) {
-    $python = "python"
+  $python = "py"
+  & $python -3.12 -m voicescript env
+  exit $LASTEXITCODE
 }
 
-& $python -m voicescript env --cache-dir $CacheDir
+& $python -m voicescript env
+exit $LASTEXITCODE
