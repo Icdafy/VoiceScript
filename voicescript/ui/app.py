@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QProgressBar,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -41,7 +42,7 @@ from voicescript.history import RecentFile, RecentFileStore
 from voicescript.models import TranscriptionJobConfig, TranscriptDocument
 from voicescript.runtime import ensure_std_streams
 from voicescript.settings import UserPreferences, default_config_file, load_preferences, save_preferences
-from voicescript.ui.icons import make_icon
+from voicescript.ui.icons import icon_pixmap, make_icon
 from voicescript.ui.theme import ThemeName, get_theme, theme_stylesheet
 from voicescript.ui.widgets import (
     AnimatedToggle,
@@ -93,14 +94,14 @@ class UploadDropZone(QFrame):
         self.setObjectName("UploadDropZone")
         self.setProperty("dragActive", False)
         self.setAcceptDrops(True)
-        self.setMinimumHeight(238)
+        self.setFixedHeight(236)
         layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignCenter)
-        layout.setSpacing(14)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(12)
 
         self.icon_label = QLabel()
         self.icon_label.setAlignment(Qt.AlignCenter)
-        self.icon_label.setFixedSize(78, 78)
+        self.icon_label.setFixedSize(72, 72)
         self.icon_label.setObjectName("UploadIcon")
         self.title_label = QLabel("点击上传音频文件或拖拽到此处")
         self.title_label.setAlignment(Qt.AlignCenter)
@@ -112,15 +113,18 @@ class UploadDropZone(QFrame):
         self.choose_button.setObjectName("PrimaryButton")
         self.choose_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.choose_button.setFixedWidth(150)
-        self.choose_button.setFixedHeight(44)
+        self.choose_button.setFixedHeight(42)
 
+        layout.addStretch(1)
         layout.addWidget(self.icon_label, 0, Qt.AlignCenter)
         layout.addWidget(self.title_label)
         layout.addWidget(self.subtitle_label)
+        layout.addSpacing(4)
         layout.addWidget(self.choose_button, 0, Qt.AlignCenter)
+        layout.addStretch(1)
 
     def style_icon(self, primary: str, soft: str) -> None:
-        self.icon_label.setPixmap(make_icon("upload", primary, 34).pixmap(34, 34))
+        self.icon_label.setPixmap(icon_pixmap("upload", primary, 32))
         self.icon_label.setStyleSheet(
             f"border-radius: 18px; background: {soft};"
         )
@@ -212,10 +216,8 @@ class MainWindow(QMainWindow):
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(28, 24, 28, 24)
+        content_layout.setContentsMargins(28, 26, 28, 24)
         content_layout.setSpacing(22)
-
-        content_layout.addLayout(self._build_topbar())
 
         top_layout = QHBoxLayout()
         top_layout.setSpacing(22)
@@ -228,7 +230,14 @@ class MainWindow(QMainWindow):
 
         content_layout.addLayout(top_layout, 1)
         content_layout.addWidget(self._build_recent_card())
-        root_layout.addWidget(content, 1)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("ContentScroll")
+        scroll.setWidget(content)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        root_layout.addWidget(scroll, 1)
 
     def _build_sidebar(self) -> QWidget:
         sidebar = QFrame()
@@ -269,25 +278,7 @@ class MainWindow(QMainWindow):
         self.theme_button.setIconSize(QSize(20, 20))
         self.theme_button.clicked.connect(self._toggle_theme)
         layout.addWidget(self.theme_button)
-
-        self.login_button = QPushButton("  登录 / 注册")
-        self.login_button.setObjectName("NavButton")
-        self.login_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.login_button.setIconSize(QSize(20, 20))
-        self.login_button.setProperty("iconName", "user")
-        layout.addWidget(self.login_button)
         return sidebar
-
-    def _build_topbar(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.addStretch(1)
-        self.avatar_button = QPushButton("  账户")
-        self.avatar_button.setObjectName("AvatarButton")
-        self.avatar_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.avatar_button.setFixedHeight(40)
-        self.avatar_button.setIconSize(QSize(18, 18))
-        row.addWidget(self.avatar_button)
-        return row
 
     def _select_nav(self, current: QPushButton) -> None:
         for button in self._nav_buttons:
@@ -298,8 +289,8 @@ class MainWindow(QMainWindow):
         card.setObjectName("PageCard")
         self._cards.append(card)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(36, 32, 36, 30)
-        layout.setSpacing(16)
+        layout.setContentsMargins(36, 30, 36, 30)
+        layout.setSpacing(18)
 
         title = QLabel("欢迎使用音频转文字")
         title.setAlignment(Qt.AlignCenter)
@@ -319,7 +310,9 @@ class MainWindow(QMainWindow):
         feature_layout.setSpacing(16)
         for icon_name, title_text, body_text in self.FEATURES:
             feature_layout.addWidget(self._feature_card(icon_name, title_text, body_text))
+        layout.addSpacing(2)
         layout.addLayout(feature_layout)
+        layout.addStretch(1)
         return card
 
     def _feature_card(self, icon_name: str, title: str, body: str) -> QWidget:
@@ -443,7 +436,7 @@ class MainWindow(QMainWindow):
         row.addWidget(name)
         if hint:
             dot = QLabel()
-            dot.setFixedSize(15, 15)
+            dot.setFixedSize(16, 16)
             dot.setToolTip(hint)
             dot.setProperty("infoDot", True)
             self._info_dots.append(dot)
@@ -498,23 +491,21 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(theme_stylesheet(self.theme_name) + self._dynamic_styles(token))
         is_dark = self.theme_name is ThemeName.DARK
 
-        self.brand_icon.setPixmap(make_icon("waveform", token.primary, 26).pixmap(26, 26))
+        self.brand_icon.setPixmap(icon_pixmap("waveform", token.primary, 26))
         for button in self._nav_buttons:
             name = button.property("iconName")
             color = token.primary if button.isChecked() else token.icon
             button.setIcon(make_icon(name, color, 20))
         self.theme_button.setText("  浅色模式" if is_dark else "  深色模式")
         self.theme_button.setIcon(make_icon("sun" if is_dark else "moon", token.icon, 20))
-        self.login_button.setIcon(make_icon("user", token.icon, 20))
-        self.avatar_button.setIcon(make_icon("user", token.primary, 18))
 
         self.drop_zone.style_icon(token.primary, token.primary_soft)
         for icon in self._feature_icons:
             name = icon.property("featureIcon")
-            icon.setPixmap(make_icon(name, token.primary, 22).pixmap(22, 22))
+            icon.setPixmap(icon_pixmap(name, token.primary, 24))
             icon.setStyleSheet(f"background: {token.primary_soft}; border-radius: 12px;")
         for dot in self._info_dots:
-            dot.setPixmap(make_icon("info", token.icon, 15).pixmap(15, 15))
+            dot.setPixmap(icon_pixmap("info", token.icon, 16))
         for combo in self._combos:
             combo.set_chevron_color(token.icon)
 
