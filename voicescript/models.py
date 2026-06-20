@@ -89,6 +89,7 @@ class TranscriptionJobConfig:
     output_dir: Path
     output_formats: tuple[str, ...] = ("txt",)
     restore_punctuation: bool = True
+    enable_speaker_id: bool = False
 
     def __post_init__(self) -> None:
         formats = tuple(str(item).strip().lower() for item in self.output_formats if str(item).strip())

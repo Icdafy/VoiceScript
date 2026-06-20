@@ -18,6 +18,7 @@ class ThemeTokens:
     muted_text: str
     border: str
     border_soft: str
+    input_border: str
     primary: str
     primary_hover: str
     primary_soft: str
@@ -38,6 +39,7 @@ THEMES = {
         muted_text="#63708a",
         border="#e6ecf7",
         border_soft="#eef2fa",
+        input_border="#dfe6f2",
         primary="#3f76ff",
         primary_hover="#2f63ee",
         primary_soft="#edf3ff",
@@ -51,11 +53,12 @@ THEMES = {
     ThemeName.DARK: ThemeTokens(
         background="#0d1117",
         surface="#161b22",
-        surface_muted="#1f2630",
+        surface_muted="#1b212b",
         text="#f6f8fa",
         muted_text="#a6b0c3",
-        border="#2a323d",
-        border_soft="#222a34",
+        border="#161b22",
+        border_soft="#161b22",
+        input_border="#2b333f",
         primary="#78a0ff",
         primary_hover="#8fb0ff",
         primary_soft="#1d2a44",
@@ -107,7 +110,7 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
     }}
     #UploadDropZone {{
         background: {t.surface_muted};
-        border: 2px dashed {t.border};
+        border: 2px dashed {t.input_border};
         border-radius: 16px;
     }}
     #UploadDropZone[dragActive="true"] {{
@@ -120,7 +123,7 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
         border-radius: 14px;
     }}
     #FeatureCard:hover {{
-        border: 1px solid {t.border};
+        border: 1px solid {t.input_border};
     }}
     #PrimaryButton {{
         background: {t.primary};
@@ -142,7 +145,7 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
     #SecondaryButton {{
         background: {t.surface_muted};
         color: {t.text};
-        border: 1px solid {t.border};
+        border: 1px solid {t.input_border};
         border-radius: 10px;
         min-height: 40px;
         padding: 0 18px;
@@ -190,7 +193,7 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
     QComboBox {{
         min-height: 44px;
         padding: 0 38px 0 14px;
-        border: 1px solid {t.border};
+        border: 1px solid {t.input_border};
         border-radius: 10px;
         background: {t.surface};
         selection-background-color: {t.primary_soft};
@@ -208,7 +211,7 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
         height: 0;
     }}
     QComboBox QAbstractItemView {{
-        border: 1px solid {t.border};
+        border: 1px solid {t.input_border};
         border-radius: 12px;
         background: {t.surface};
         padding: 6px;
@@ -245,7 +248,7 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
     QHeaderView::section {{
         background: transparent;
         border: none;
-        border-bottom: 1px solid {t.border};
+        border-bottom: 1px solid {t.input_border};
         color: {t.muted_text};
         padding: 10px 4px;
         font-size: 13px;
@@ -255,20 +258,21 @@ def theme_stylesheet(theme: ThemeName | str) -> str:
         border: none;
     }}
     QProgressBar {{
-        height: 8px;
+        min-height: 20px;
         border: none;
-        border-radius: 4px;
+        border-radius: 10px;
         background: {t.surface_muted};
         text-align: center;
-        color: transparent;
+        color: {t.muted_text};
+        font-size: 12px;
     }}
     QProgressBar::chunk {{
-        border-radius: 4px;
+        border-radius: 10px;
         background: {t.primary};
     }}
     QTextEdit {{
         background: {t.surface_muted};
-        border: 1px solid {t.border};
+        border: 1px solid {t.input_border};
         border-radius: 14px;
         padding: 14px;
         selection-background-color: {t.primary_soft};

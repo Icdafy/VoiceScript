@@ -61,6 +61,43 @@ def build_ffmpeg_command(input_file: Path, output_file: Path) -> list[str]:
     ]
 
 
+def build_segment_command(
+    input_file: Path,
+    output_file: Path,
+    start_sec: float = 0.0,
+    duration_sec: float | None = None,
+) -> list[str]:
+    """ffmpeg command to extract a mono 16kHz wav slice [start, start+duration)."""
+    command = ["ffmpeg", "-y"]
+    if start_sec and start_sec > 0:
+        command += ["-ss", f"{float(start_sec):.3f}"]
+    command += ["-i", str(input_file), "-vn", "-ac", "1", "-ar", "16000", "-sample_fmt", "s16"]
+    if duration_sec is not None and duration_sec > 0:
+        command += ["-t", f"{float(duration_sec):.3f}"]
+    command.append(str(output_file))
+    return command
+
+
+def extract_segment_wav(
+    input_file: Path,
+    output_file: Path,
+    start_sec: float = 0.0,
+    duration_sec: float | None = None,
+) -> Path:
+    """Extract a mono 16kHz wav slice, converting any supported format to wav."""
+    output_file = Path(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        build_segment_command(Path(input_file), output_file, start_sec, duration_sec),
+        check=True,
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return output_file
+
+
 def probe_audio(path: Path) -> AudioInfo:
     path = Path(path)
     if not path.exists():

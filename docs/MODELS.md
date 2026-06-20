@@ -1,6 +1,6 @@
 # 模型说明
 
-VoiceScript v0.2.2 只接入 Qwen3-ASR，不沿用 v0.1.x 的 Whisper 代码。
+VoiceScript v0.2.3 只接入 Qwen3-ASR，不沿用 v0.1.x 的 Whisper 代码。长音频按 30 分钟分段后逐段转录，再合并为带时间戳的完整文本。
 
 ## 标准模型
 

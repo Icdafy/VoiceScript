@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QProgressBar,
     QScrollArea,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -166,9 +167,8 @@ class MainWindow(QMainWindow):
         ("首页", "home"),
         ("文件列表", "list"),
         ("历史记录", "clock"),
-        ("设置", "gear"),
-        ("帮助与反馈", "help"),
     ]
+    TRANSCRIPT_EXTENSIONS = (".txt", ".md", ".srt", ".json")
     FEATURES = [
         ("bolt", "快速准确", "先进的 AI 语音识别技术，准确率高达 98%+"),
         ("shield", "安全可靠", "文件加密传输与存储，保护您的隐私安全"),
@@ -214,6 +214,22 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(self._build_sidebar())
 
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self._build_home_page())
+        self.pages.addWidget(self._build_files_page())
+        self.pages.addWidget(self._build_history_page())
+        root_layout.addWidget(self.pages, 1)
+
+    def _scroll_wrap(self, content: QWidget) -> QScrollArea:
+        scroll = QScrollArea()
+        scroll.setObjectName("ContentScroll")
+        scroll.setWidget(content)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        return scroll
+
+    def _build_home_page(self) -> QWidget:
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(28, 26, 28, 24)
@@ -230,14 +246,7 @@ class MainWindow(QMainWindow):
 
         content_layout.addLayout(top_layout, 1)
         content_layout.addWidget(self._build_recent_card())
-
-        scroll = QScrollArea()
-        scroll.setObjectName("ContentScroll")
-        scroll.setWidget(content)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        root_layout.addWidget(scroll, 1)
+        return self._scroll_wrap(content)
 
     def _build_sidebar(self) -> QWidget:
         sidebar = QFrame()
@@ -267,7 +276,7 @@ class MainWindow(QMainWindow):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setIconSize(QSize(20, 20))
             button.setProperty("iconName", icon_name)
-            button.clicked.connect(lambda _=False, current=button: self._select_nav(current))
+            button.clicked.connect(lambda _=False, i=index: self._select_page(i))
             self._nav_buttons.append(button)
             layout.addWidget(button)
         layout.addStretch(1)
@@ -280,9 +289,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.theme_button)
         return sidebar
 
-    def _select_nav(self, current: QPushButton) -> None:
-        for button in self._nav_buttons:
-            button.setChecked(button is current)
+    def _select_page(self, index: int) -> None:
+        for i, button in enumerate(self._nav_buttons):
+            button.setChecked(i == index)
+        self.pages.setCurrentIndex(index)
+        if index == 1:
+            self._reload_file_list()
+        elif index == 2:
+            self._reload_history_page()
 
     def _build_upload_card(self) -> QWidget:
         card = QFrame()
@@ -387,15 +401,27 @@ class MainWindow(QMainWindow):
         self.language_combo = self._combo(["中文（普通话）", "自动识别", "English", "粤语"])
         self.model_combo = self._combo(["标准模型（推荐）", "精准模型"])
         self.speaker_check = AnimatedToggle()
-        self.speaker_check.setEnabled(False)
         self.punctuation_check = AnimatedToggle()
         self.punctuation_check.setChecked(True)
         self.format_combo = self._combo(["TXT 文本格式", "Markdown", "SRT 字幕", "JSON 数据", "全部格式"])
 
+        model_hint = (
+            "标准模型：Qwen3-ASR-0.6B，体积小、占用低，约 6GB 内存即可运行，"
+            "适合日常会议 / 访谈录音，速度更快（推荐）。\n"
+            "精准模型：Qwen3-ASR-1.7B，参数更大、识别更准，适合口音重、"
+            "噪声大或专业术语多的音频，但显存 / 内存占用与耗时更高。\n"
+            "两档均搭配 Qwen3-ForcedAligner 输出逐句时间戳。"
+        )
+        speaker_hint = (
+            "开启后会在转录时尝试区分不同发言人。\n"
+            "注意：当前 Qwen3-ASR 模型尚未内置说话人分离，开启此项暂不会改变转录结果，"
+            "仅作为偏好保存，待后续版本接入分离模型后生效。"
+        )
+
         card_layout.addLayout(self._setting_row("语言", self.language_combo))
-        card_layout.addLayout(self._setting_row("转录模型", self.model_combo, "选择标准或精准识别档位"))
-        card_layout.addLayout(self._setting_row("说话人识别", self.speaker_check, "区分不同发言人（暂未开放）"))
-        card_layout.addLayout(self._setting_row("标点恢复", self.punctuation_check, "自动补全句读标点"))
+        card_layout.addLayout(self._setting_row("转录模型", self.model_combo, model_hint))
+        card_layout.addLayout(self._setting_row("说话人识别", self.speaker_check, speaker_hint))
+        card_layout.addLayout(self._setting_row("标点恢复", self.punctuation_check, "自动补全句读标点，关闭则输出纯文字。"))
         card_layout.addLayout(self._setting_row("输出格式", self.format_combo))
 
         choose_output = QPushButton(self._output_label())
@@ -415,9 +441,11 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("请先上传音频文件")
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setObjectName("MutedLabel")
+        self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
         self.progress_bar = QProgressBar()
-        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
         layout.addStretch(1)
@@ -462,28 +490,133 @@ class MainWindow(QMainWindow):
         all_button = QPushButton("查看全部 ›")
         all_button.setObjectName("LinkButton")
         all_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        all_button.clicked.connect(lambda: self._select_page(2))
         title_row.addWidget(all_button)
         layout.addLayout(title_row)
 
-        self.recent_table = QTableWidget(0, 6)
-        self.recent_table.setHorizontalHeaderLabels(
-            ["文件名", "时长", "大小", "转录时间", "状态", "操作"]
-        )
-        self.recent_table.verticalHeader().setVisible(False)
-        self.recent_table.setShowGrid(False)
-        self.recent_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.recent_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.recent_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.recent_table.verticalHeader().setDefaultSectionSize(52)
-        self.recent_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in range(1, 6):
-            self.recent_table.horizontalHeader().setSectionResizeMode(
-                column, QHeaderView.ResizeMode.ResizeToContents
-            )
-        self.recent_table.setMinimumHeight(150)
+        self.recent_table = self._history_table()
         self.recent_table.cellDoubleClicked.connect(self._open_history_output)
         layout.addWidget(self.recent_table)
         return card
+
+    def _history_table(self) -> QTableWidget:
+        table = QTableWidget(0, 6)
+        table.setHorizontalHeaderLabels(["文件名", "时长", "大小", "转录时间", "状态", "操作"])
+        table.verticalHeader().setVisible(False)
+        table.setShowGrid(False)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.verticalHeader().setDefaultSectionSize(52)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in range(1, 6):
+            table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        table.setMinimumHeight(150)
+        return table
+
+    def _build_files_page(self) -> QWidget:
+        content = QWidget()
+        outer = QVBoxLayout(content)
+        outer.setContentsMargins(28, 26, 28, 24)
+        outer.setSpacing(22)
+
+        card = QFrame()
+        card.setObjectName("RecentCard")
+        self._cards.append(card)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(28, 22, 28, 22)
+        layout.setSpacing(14)
+
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        title = QLabel("文件列表")
+        title.setStyleSheet("font-size: 18px; font-weight: 800;")
+        subtitle = QLabel("保存目录中的转录结果文件")
+        subtitle.setObjectName("MutedLabel")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box)
+        header.addStretch(1)
+        refresh = QPushButton("刷新")
+        refresh.setObjectName("SecondaryButton")
+        refresh.setCursor(Qt.CursorShape.PointingHandCursor)
+        refresh.clicked.connect(self._reload_file_list)
+        header.addWidget(refresh)
+        open_folder = QPushButton("打开目录")
+        open_folder.setObjectName("SecondaryButton")
+        open_folder.setCursor(Qt.CursorShape.PointingHandCursor)
+        open_folder.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.output_dir)))
+        )
+        header.addWidget(open_folder)
+        layout.addLayout(header)
+
+        self.files_table = QTableWidget(0, 5)
+        self.files_table.setHorizontalHeaderLabels(["文件名", "类型", "大小", "修改时间", "操作"])
+        self.files_table.verticalHeader().setVisible(False)
+        self.files_table.setShowGrid(False)
+        self.files_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.files_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.files_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.files_table.verticalHeader().setDefaultSectionSize(50)
+        self.files_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in range(1, 5):
+            self.files_table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        self.files_table.setMinimumHeight(200)
+        layout.addWidget(self.files_table)
+
+        self.files_empty = QLabel("保存目录暂无转录文件，转录完成后会自动出现在这里。")
+        self.files_empty.setObjectName("MutedLabel")
+        self.files_empty.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.files_empty)
+
+        outer.addWidget(card)
+        return self._scroll_wrap(content)
+
+    def _build_history_page(self) -> QWidget:
+        content = QWidget()
+        outer = QVBoxLayout(content)
+        outer.setContentsMargins(28, 26, 28, 24)
+        outer.setSpacing(22)
+
+        card = QFrame()
+        card.setObjectName("RecentCard")
+        self._cards.append(card)
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(28, 22, 28, 22)
+        layout.setSpacing(14)
+
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        title = QLabel("历史记录")
+        title.setStyleSheet("font-size: 18px; font-weight: 800;")
+        subtitle = QLabel("全部转录任务记录")
+        subtitle.setObjectName("MutedLabel")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box)
+        header.addStretch(1)
+        clear = QPushButton("清空历史")
+        clear.setObjectName("SecondaryButton")
+        clear.setCursor(Qt.CursorShape.PointingHandCursor)
+        clear.clicked.connect(self._clear_history)
+        header.addWidget(clear)
+        layout.addLayout(header)
+
+        self.history_table = self._history_table()
+        self.history_table.setMinimumHeight(220)
+        self.history_table.cellDoubleClicked.connect(self._open_history_output)
+        layout.addWidget(self.history_table)
+
+        self.history_empty = QLabel("暂无历史记录，完成第一次转录后会显示在这里。")
+        self.history_empty.setObjectName("MutedLabel")
+        self.history_empty.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.history_empty)
+
+        outer.addWidget(card)
+        return self._scroll_wrap(content)
 
     # ---- theming ----------------------------------------------------------
     def _apply_theme(self) -> None:
@@ -599,6 +732,7 @@ class MainWindow(QMainWindow):
             output_dir=self.output_dir,
             output_formats=self._selected_formats(),
             restore_punctuation=self.punctuation_check.isChecked(),
+            enable_speaker_id=self.speaker_check.isChecked(),
         )
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
@@ -675,20 +809,89 @@ class MainWindow(QMainWindow):
             )
         )
 
-    def _reload_history(self) -> None:
-        items = self.history_store.load()
+    def _populate_history_table(self, table: QTableWidget, items: list[RecentFile]) -> None:
         token = get_theme(self.theme_name)
-        self.recent_table.setRowCount(len(items))
+        table.setRowCount(len(items))
         for row, item in enumerate(items):
             name_item = QTableWidgetItem("  " + item.file_path.name)
             name_item.setIcon(make_icon("music", token.primary, 18))
-            self.recent_table.setItem(row, 0, name_item)
+            table.setItem(row, 0, name_item)
             for column, value in enumerate(
                 [item.duration_label, item.size_label, item.transcribed_at], start=1
             ):
-                self.recent_table.setItem(row, column, QTableWidgetItem(value))
-            self.recent_table.setCellWidget(row, 4, self._status_badge(item.status, token))
-            self.recent_table.setCellWidget(row, 5, self._row_actions(item, token))
+                table.setItem(row, column, QTableWidgetItem(value))
+            table.setCellWidget(row, 4, self._status_badge(item.status, token))
+            table.setCellWidget(row, 5, self._row_actions(item, token))
+
+    def _reload_history(self) -> None:
+        items = self.history_store.load()
+        if hasattr(self, "recent_table"):
+            self._populate_history_table(self.recent_table, items[:8])
+        if hasattr(self, "history_table"):
+            self._reload_history_page()
+
+    def _reload_history_page(self) -> None:
+        if not hasattr(self, "history_table"):
+            return
+        items = self.history_store.load()
+        self._populate_history_table(self.history_table, items)
+        self.history_empty.setVisible(not items)
+        self.history_table.setVisible(bool(items))
+
+    def _clear_history(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            "清空历史",
+            "确定要清空全部转录历史记录吗？此操作不会删除已生成的文件。",
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.history_store.save([])
+            self._reload_history()
+
+    def _reload_file_list(self) -> None:
+        if not hasattr(self, "files_table"):
+            return
+        token = get_theme(self.theme_name)
+        files: list[Path] = []
+        output_dir = Path(self.output_dir)
+        if output_dir.exists():
+            for path in output_dir.iterdir():
+                if path.is_file() and path.suffix.lower() in self.TRANSCRIPT_EXTENSIONS:
+                    files.append(path)
+        files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+        self.files_table.setRowCount(len(files))
+        for row, path in enumerate(files):
+            stat = path.stat()
+            name_item = QTableWidgetItem("  " + path.name)
+            name_item.setIcon(make_icon("file", token.primary, 18))
+            self.files_table.setItem(row, 0, name_item)
+            self.files_table.setItem(row, 1, QTableWidgetItem(path.suffix.lstrip(".").upper()))
+            self.files_table.setItem(row, 2, QTableWidgetItem(_format_size(stat.st_size)))
+            self.files_table.setItem(
+                row, 3, QTableWidgetItem(datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"))
+            )
+            self.files_table.setCellWidget(row, 4, self._file_actions(path, token))
+        self.files_empty.setVisible(not files)
+        self.files_table.setVisible(bool(files))
+
+    def _file_actions(self, path: Path, token) -> QWidget:
+        wrap = QWidget()
+        box = QHBoxLayout(wrap)
+        box.setContentsMargins(4, 0, 4, 0)
+        box.setSpacing(2)
+        open_file = IconButton("file", token.icon, 18, 32, tooltip="打开文件")
+        open_file.clicked.connect(
+            lambda _=False, p=str(path): QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+        )
+        open_dir = IconButton("folder", token.icon, 18, 32, tooltip="打开所在文件夹")
+        open_dir.clicked.connect(
+            lambda _=False, p=str(path.parent): QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+        )
+        box.addStretch(1)
+        box.addWidget(open_file)
+        box.addWidget(open_dir)
+        return wrap
 
     def _status_badge(self, status: str, token) -> QWidget:
         ok = status == "已完成"
@@ -729,6 +932,8 @@ class MainWindow(QMainWindow):
         # Re-render row widgets so icons/badges follow the active theme.
         if hasattr(self, "recent_table"):
             self._reload_history()
+        if hasattr(self, "files_table"):
+            self._reload_file_list()
 
     def _open_history_output(self, row: int, _column: int) -> None:
         items = self.history_store.load()

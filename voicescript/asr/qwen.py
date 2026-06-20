@@ -1,14 +1,28 @@
 from __future__ import annotations
 
+import math
+import shutil
+import sys
+import tempfile
+import types
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-import sys
-import types
 from typing import Any
 
-from voicescript.audio.probe import probe_audio
+from voicescript.audio.probe import extract_segment_wav, probe_audio
 from voicescript.models import ProgressCallback, TranscriptionJobConfig, TranscriptDocument, TranscriptSegment
+
+# 每段转录的时长（秒）。长音频按 30 分钟切片，逐段送入 Qwen3-ASR，
+# 既能给出细粒度进度，又能稳定转录数小时的录音。
+SEGMENT_SECONDS = 30 * 60
+
+
+def _format_clock(seconds: float) -> str:
+    total = int(round(max(0.0, float(seconds))))
+    hours, rem = divmod(total, 3600)
+    minutes, sec = divmod(rem, 60)
+    return f"{hours:02d}:{minutes:02d}:{sec:02d}"
 
 
 class QwenModelProfile(str, Enum):
@@ -111,9 +125,22 @@ def _item_attr(item: Any, *names: str, default: Any = None) -> Any:
     return default
 
 
-def _segments_from_timestamps(items: list[Any], fallback_text: str, duration_sec: float) -> list[TranscriptSegment]:
+def _segments_from_timestamps(
+    items: list[Any],
+    fallback_text: str,
+    duration_sec: float,
+    time_offset: float = 0.0,
+    start_index: int = 1,
+) -> list[TranscriptSegment]:
     if not items:
-        return [TranscriptSegment(index=1, start_sec=0.0, end_sec=duration_sec, text=fallback_text)]
+        return [
+            TranscriptSegment(
+                index=start_index,
+                start_sec=time_offset,
+                end_sec=time_offset + duration_sec,
+                text=fallback_text,
+            )
+        ]
 
     segments: list[TranscriptSegment] = []
     buffer: list[str] = []
@@ -132,15 +159,34 @@ def _segments_from_timestamps(items: list[Any], fallback_text: str, duration_sec
         if should_flush and joined:
             segment_end = duration_sec if end <= start and duration_sec > start else end
             segments.append(
-                TranscriptSegment(index=len(segments) + 1, start_sec=start, end_sec=segment_end, text=joined)
+                TranscriptSegment(
+                    index=start_index + len(segments),
+                    start_sec=time_offset + start,
+                    end_sec=time_offset + segment_end,
+                    text=joined,
+                )
             )
             buffer = []
     if buffer:
         joined = "".join(buffer).strip()
         if joined:
             segment_end = duration_sec if end <= start and duration_sec > start else end
-            segments.append(TranscriptSegment(index=len(segments) + 1, start_sec=start, end_sec=segment_end, text=joined))
-    return segments or [TranscriptSegment(index=1, start_sec=0.0, end_sec=duration_sec, text=fallback_text)]
+            segments.append(
+                TranscriptSegment(
+                    index=start_index + len(segments),
+                    start_sec=time_offset + start,
+                    end_sec=time_offset + segment_end,
+                    text=joined,
+                )
+            )
+    return segments or [
+        TranscriptSegment(
+            index=start_index,
+            start_sec=time_offset,
+            end_sec=time_offset + duration_sec,
+            text=fallback_text,
+        )
+    ]
 
 
 class QwenAsrBackend:
@@ -180,34 +226,90 @@ class QwenAsrBackend:
         progress_callback: ProgressCallback | None = None,
     ) -> TranscriptDocument:
         input_file = Path(config.input_file)
-        if progress_callback:
-            progress_callback(0.05, "检查音频文件")
+
+        def emit(value: float, message: str) -> None:
+            if progress_callback:
+                progress_callback(value, message)
+
+        emit(0.02, "检查音频文件…")
         audio_info = probe_audio(input_file)
+        duration = float(audio_info.duration_sec or 0.0)
+        total_label = _format_clock(duration)
 
-        if progress_callback:
-            progress_callback(0.15, "加载 Qwen3-ASR 模型")
+        # 默认以中文输出为主：未指定或自动识别时强制中文。
+        language = _qwen_language(config.language) or "Chinese"
+
+        n_segments = max(1, math.ceil(duration / SEGMENT_SECONDS)) if duration > 0 else 1
+        plan = "整段转录" if n_segments == 1 else f"将按 30 分钟切成 {n_segments} 段转录"
+        emit(0.04, f"音频时长 {total_label}，{plan}…")
+
+        emit(0.08, "加载 Qwen3-ASR 模型（首次使用需下载模型，请耐心等待）…")
         model = self._load_model()
+        emit(0.1, f"模型就绪，输出语言：{language}")
 
-        if progress_callback:
-            progress_callback(0.35, "开始语音识别")
-        result = model.transcribe(
-            audio=str(input_file),
-            language=_qwen_language(config.language),
-            return_time_stamps=True,
-        )[0]
+        work_dir = Path(tempfile.mkdtemp(prefix="voicescript_seg_"))
+        merged: list[TranscriptSegment] = []
+        detected_languages: list[str] = []
+        try:
+            for index in range(n_segments):
+                seg_start = index * SEGMENT_SECONDS
+                seg_end = min(duration, seg_start + SEGMENT_SECONDS) if duration > 0 else 0.0
+                seg_duration = (seg_end - seg_start) if duration > 0 else None
+                span = f"{_format_clock(seg_start)} – {_format_clock(seg_end)}" if duration > 0 else "整段"
 
-        if progress_callback:
-            progress_callback(0.9, "生成时间分段")
-        language = str(_item_attr(result, "language", default=config.language or "") or "")
-        text = str(_item_attr(result, "text", default="") or "")
-        timestamps = list(_item_attr(result, "time_stamps", default=[]) or [])
-        segments = _segments_from_timestamps(timestamps, text, audio_info.duration_sec)
-        if progress_callback:
-            progress_callback(1.0, "转录完成")
+                emit(
+                    0.1 + 0.85 * (index / n_segments),
+                    f"正在转录第 {index + 1}/{n_segments} 段（{span}）· 提取音频片段…",
+                )
+                segment_wav = work_dir / f"segment_{index:03d}.wav"
+                extract_segment_wav(input_file, segment_wav, seg_start, seg_duration)
+
+                emit(
+                    0.1 + 0.85 * (index / n_segments) + 0.02,
+                    f"正在转录第 {index + 1}/{n_segments} 段（{span}）· Qwen3-ASR 识别中…",
+                )
+                result = model.transcribe(
+                    audio=str(segment_wav),
+                    language=language,
+                    return_time_stamps=True,
+                )[0]
+
+                seg_language = str(_item_attr(result, "language", default="") or "")
+                if seg_language:
+                    detected_languages.append(seg_language)
+                text = str(_item_attr(result, "text", default="") or "")
+                timestamps = list(_item_attr(result, "time_stamps", default=[]) or [])
+                merged.extend(
+                    _segments_from_timestamps(
+                        timestamps,
+                        text,
+                        seg_duration if seg_duration is not None else duration,
+                        time_offset=seg_start,
+                        start_index=len(merged) + 1,
+                    )
+                )
+                emit(
+                    0.1 + 0.85 * ((index + 1) / n_segments),
+                    f"第 {index + 1}/{n_segments} 段完成 · 已转录 {_format_clock(seg_end)}/{total_label}"
+                    f" · 累计 {len(merged)} 条片段",
+                )
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+        emit(0.97, "合并时间分段，生成转录文本…")
+        segments = [
+            TranscriptSegment(index=i + 1, start_sec=s.start_sec, end_sec=s.end_sec, text=s.text)
+            for i, s in enumerate(merged)
+            if s.text
+        ]
+        if not segments:
+            segments = [TranscriptSegment(index=1, start_sec=0.0, end_sec=duration, text="")]
+
+        emit(1.0, f"转录完成 · 共 {len(segments)} 条片段 · 时长 {total_label}")
         return TranscriptDocument(
             source_file=input_file,
             duration_sec=audio_info.duration_sec,
-            language=language,
+            language=detected_languages[0] if detected_languages else language,
             model=self.profile_config.asr_checkpoint,
             segments=segments,
         )
