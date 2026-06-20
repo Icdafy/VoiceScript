@@ -274,7 +274,8 @@ class MainWindow(QMainWindow):
     def _on_progress(self, message: str, value) -> None:
         self.status_label.setText(message)
         if isinstance(value, (int, float)):
-            self.progress.setValue(max(0, min(100, int(float(value) * 100))))
+            next_value = max(0, min(100, int(float(value) * 100)))
+            self.progress.setValue(max(self.progress.value(), next_value))
 
     def _on_completed(self, transcript: Transcript) -> None:
         self.transcript = transcript

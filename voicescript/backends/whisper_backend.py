@@ -6,6 +6,7 @@ import tempfile
 from typing import Any
 
 from voicescript.core.audio import probe_audio, require_ffmpeg_tool
+from voicescript.core.model_cache import clean_invalid_whisper_checkpoint, ensure_whisper_checkpoint
 from voicescript.core.transcript import Segment, Transcript, Word
 
 from .base import ASRBackend, BackendInfo, TranscriptionProgress
@@ -99,10 +100,12 @@ class WhisperBackend(ASRBackend):
         if self._model is not None:
             return self._model
         progress.emit("Loading Whisper large-v3", 0.05)
+        clean_invalid_whisper_checkpoint("large-v3", model_dir=self.model_dir, progress=progress)
         import torch
         import whisper
 
         device = self.device or self._pick_device(torch, progress)
+        ensure_whisper_checkpoint(whisper, "large-v3", model_dir=self.model_dir, progress=progress)
         self._model = whisper.load_model("large-v3", device=device, download_root=self.model_dir)
         return self._model
 

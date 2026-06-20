@@ -40,6 +40,16 @@ class DesktopUploadTests(unittest.TestCase):
             finally:
                 window.close()
 
+    def test_progress_updates_do_not_move_backward(self):
+        window = UploadStartsTranscriptionWindow()
+        try:
+            window.progress.setValue(55)
+            window._on_progress("later stage", 0.2)
+
+            self.assertEqual(window.progress.value(), 55)
+        finally:
+            window.close()
+
 
 if __name__ == "__main__":
     unittest.main()

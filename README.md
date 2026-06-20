@@ -25,6 +25,8 @@ For multi-hour audio, v0.1.1 and later show chunk-level progress while transcrip
 
 v0.1.2 fixes the Windows package so Whisper and Qwen runtime assets are included in the app folder. Model weights are still downloaded into the user cache instead of being committed or bundled.
 
+v0.1.3 fixes stalled first-run model setup: Qwen downloads the ASR model and forced aligner explicitly with UI progress, Whisper removes broken zero-byte checkpoints and downloads large-v3 through a more reliable streaming HTTP path, and progress bars no longer move backward between loading and transcription.
+
 ## Quick Start
 
 ```powershell

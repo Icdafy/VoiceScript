@@ -8,6 +8,7 @@ import types
 from typing import Any, Iterable
 
 from voicescript.core.audio import probe_audio, require_ffmpeg_tool
+from voicescript.core.model_cache import prefetch_huggingface_repo
 from voicescript.core.transcript import Segment, Transcript, Word
 
 from .base import ASRBackend, BackendInfo, TranscriptionProgress
@@ -151,9 +152,22 @@ class QwenBackend(ASRBackend):
     def _load_model(self, progress: TranscriptionProgress) -> Any:
         if self._model is not None:
             return self._model
-        progress.emit("Loading Qwen3-ASR-1.7B and forced aligner", 0.05)
+        progress.emit("Preparing Qwen3-ASR-1.7B and forced aligner", 0.05)
         import torch
 
+        prefetch_huggingface_repo(
+            QWEN_MODEL_ID,
+            label="Qwen3-ASR-1.7B",
+            progress=progress,
+            progress_value=0.08,
+        )
+        prefetch_huggingface_repo(
+            QWEN_ALIGNER_ID,
+            label="Qwen3-ForcedAligner-0.6B",
+            progress=progress,
+            progress_value=0.3,
+        )
+        progress.emit("Loading Qwen3-ASR-1.7B and forced aligner into memory", 0.55)
         Qwen3ASRModel = _import_qwen_model_class()
 
         device_map = self.device_map or self._pick_device_map(torch, progress)
@@ -220,7 +234,7 @@ class QwenBackend(ASRBackend):
         offset: float,
         progress: TranscriptionProgress,
     ) -> Transcript:
-        progress.emit("Transcribing with Qwen3-ASR-1.7B", 0.2 if offset == 0 else None)
+        progress.emit("Transcribing with Qwen3-ASR-1.7B", 0.65 if offset == 0 else None)
         results = model.transcribe(
             audio=str(audio_path),
             language=None,

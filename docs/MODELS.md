@@ -10,6 +10,8 @@ As of v0.1.1, long files are split into 60-second WAV chunks for Whisper. Each c
 
 As of v0.1.2, the Windows package includes Whisper's runtime assets, including mel filters and tokenizer files. Model weights are still downloaded to the user's cache on first use.
 
+As of v0.1.3, VoiceScript removes broken zero-byte Whisper checkpoints and downloads `large-v3` with a streaming HTTP downloader that reports progress in the UI.
+
 ## Qwen3-ASR-1.7B
 
 VoiceScript calls `Qwen/Qwen3-ASR-1.7B` through the `qwen-asr` transformers backend. For timestamps, it loads `Qwen/Qwen3-ForcedAligner-0.6B`.
@@ -17,6 +19,8 @@ VoiceScript calls `Qwen/Qwen3-ASR-1.7B` through the `qwen-asr` transformers back
 On GPUs with less than about 8GB VRAM, VoiceScript uses CPU fallback. Long audio is split into 170-second WAV chunks for timestamp-safe forced alignment, then merged back into one absolute timeline.
 
 As of v0.1.2, the Windows package includes Qwen's forced-alignment runtime dictionary and collects Qwen modules without importing the top-level package during packaging. This avoids the nagisa/DyNet Windows path issue during build collection.
+
+As of v0.1.3, VoiceScript explicitly checks/downloads both `Qwen/Qwen3-ASR-1.7B` and `Qwen/Qwen3-ForcedAligner-0.6B` before model initialization, so first-run setup shows progress instead of appearing stuck at model loading.
 
 ## Output Rule
 
