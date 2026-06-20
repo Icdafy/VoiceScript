@@ -1,2 +1,3 @@
-# HearScribe
-Hear the voice, scribe the words
+# VoiceScript
+声落成笺，语转为文
+支持实时转写、音频上传识别、会议纪要生成与语义整理。
