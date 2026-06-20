@@ -1,6 +1,6 @@
 # 模型说明
 
-VoiceScript v0.2.0 只接入 Qwen3-ASR，不沿用 v0.1.x 的 Whisper 代码。
+VoiceScript v0.2.1 只接入 Qwen3-ASR，不沿用 v0.1.x 的 Whisper 代码。
 
 ## 标准模型
 

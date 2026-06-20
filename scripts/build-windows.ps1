@@ -4,7 +4,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $venvPython = Join-Path $root ".venv\Scripts\python.exe"
 $releaseDir = Join-Path $root "release"
 $stageDir = Join-Path $releaseDir "package"
-$zipPath = Join-Path $releaseDir "VoiceScript-v0.2.0-windows-x64.zip"
+$zipPath = Join-Path $releaseDir "VoiceScript-v0.2.1-windows-x64.zip"
 
 Set-Location $root
 

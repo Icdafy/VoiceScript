@@ -6,15 +6,20 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QPainter, QPen
+from PySide6.QtCore import (
+    QEasingCurve,
+    QPropertyAnimation,
+    QSize,
+    Qt,
+    QUrl,
+    Signal,
+)
+from PySide6.QtGui import QDesktopServices, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -22,8 +27,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QProgressBar,
-    QSizePolicy,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -38,7 +41,15 @@ from voicescript.history import RecentFile, RecentFileStore
 from voicescript.models import TranscriptionJobConfig, TranscriptDocument
 from voicescript.runtime import ensure_std_streams
 from voicescript.settings import UserPreferences, default_config_file, load_preferences, save_preferences
-from voicescript.ui.theme import ThemeName, theme_stylesheet
+from voicescript.ui.icons import make_icon
+from voicescript.ui.theme import ThemeName, get_theme, theme_stylesheet
+from voicescript.ui.widgets import (
+    AnimatedToggle,
+    IconButton,
+    StyledComboBox,
+    apply_shadow,
+    fade_in,
+)
 from voicescript.ui.worker import TranscriptionWorker
 
 
@@ -80,32 +91,39 @@ class UploadDropZone(QFrame):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("UploadDropZone")
+        self.setProperty("dragActive", False)
         self.setAcceptDrops(True)
-        self.setMinimumHeight(230)
+        self.setMinimumHeight(238)
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(14)
 
-        self.icon_label = QLabel("↑")
+        self.icon_label = QLabel()
         self.icon_label.setAlignment(Qt.AlignCenter)
-        self.icon_label.setFixedSize(84, 84)
-        self.icon_label.setStyleSheet(
-            "border-radius: 20px; background: #edf3ff; color: #3f76ff; font-size: 42px; font-weight: 700;"
-        )
+        self.icon_label.setFixedSize(78, 78)
+        self.icon_label.setObjectName("UploadIcon")
         self.title_label = QLabel("点击上传音频文件或拖拽到此处")
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet("font-size: 16px; font-weight: 700;")
         self.subtitle_label = QLabel("支持 mp3、wav、m4a、aac、flac、ogg 等格式")
         self.subtitle_label.setAlignment(Qt.AlignCenter)
-        self.subtitle_label.setStyleSheet("color: #63708a;")
+        self.subtitle_label.setObjectName("MutedLabel")
         self.choose_button = QPushButton("选择文件")
         self.choose_button.setObjectName("PrimaryButton")
+        self.choose_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.choose_button.setFixedWidth(150)
+        self.choose_button.setFixedHeight(44)
 
         layout.addWidget(self.icon_label, 0, Qt.AlignCenter)
         layout.addWidget(self.title_label)
         layout.addWidget(self.subtitle_label)
         layout.addWidget(self.choose_button, 0, Qt.AlignCenter)
+
+    def style_icon(self, primary: str, soft: str) -> None:
+        self.icon_label.setPixmap(make_icon("upload", primary, 34).pixmap(34, 34))
+        self.icon_label.setStyleSheet(
+            f"border-radius: 18px; background: {soft};"
+        )
 
     def set_selected_file(self, info: AudioInfo | None) -> None:
         if info is None:
@@ -113,67 +131,52 @@ class UploadDropZone(QFrame):
             self.subtitle_label.setText("支持 mp3、wav、m4a、aac、flac、ogg 等格式")
             return
         self.title_label.setText(info.path.name)
-        self.subtitle_label.setText(f"时长 {_format_duration(info.duration_sec)} · 大小 {_format_size(info.size_bytes)}")
+        self.subtitle_label.setText(
+            f"时长 {_format_duration(info.duration_sec)} · 大小 {_format_size(info.size_bytes)}"
+        )
+
+    def _set_drag(self, active: bool) -> None:
+        self.setProperty("dragActive", active)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def dragEnterEvent(self, event) -> None:  # type: ignore[override]
         if event.mimeData().hasUrls():
+            self._set_drag(True)
             event.acceptProposedAction()
 
+    def dragLeaveEvent(self, event) -> None:  # type: ignore[override]
+        del event
+        self._set_drag(False)
+
     def dropEvent(self, event) -> None:  # type: ignore[override]
+        self._set_drag(False)
         for url in event.mimeData().urls():
             if url.isLocalFile():
                 self.file_dropped.emit(url.toLocalFile())
                 break
 
 
-class ToggleSwitch(QCheckBox):
-    def __init__(self) -> None:
-        super().__init__()
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(52, 28)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    def sizeHint(self) -> QSize:  # type: ignore[override]
-        return QSize(52, 28)
-
-    def paintEvent(self, event) -> None:  # type: ignore[override]
-        del event
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        track = QColor("#3f76ff" if self.isChecked() else "#b7bfcd")
-        if not self.isEnabled():
-            track = QColor("#aab3c2")
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(track)
-        track_rect = self.rect().adjusted(1, 2, -1, -2)
-        painter.drawRoundedRect(track_rect, 12, 12)
-
-        knob_size = 22
-        knob_y = track_rect.center().y() - knob_size // 2
-        knob_x = track_rect.right() - knob_size - 2 if self.isChecked() else track_rect.left() + 2
-        painter.setBrush(QColor("#ffffff"))
-        painter.drawEllipse(knob_x, knob_y, knob_size, knob_size)
-
-
-class StyledComboBox(QComboBox):
-    def paintEvent(self, event) -> None:  # type: ignore[override]
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor("#63708a"), 1.6))
-        center_x = self.width() - 22
-        center_y = self.height() // 2 + 1
-        painter.drawLine(center_x - 5, center_y - 3, center_x, center_y + 2)
-        painter.drawLine(center_x, center_y + 2, center_x + 5, center_y - 3)
-
-
 class MainWindow(QMainWindow):
+    NAV_ITEMS = [
+        ("首页", "home"),
+        ("文件列表", "list"),
+        ("历史记录", "clock"),
+        ("设置", "gear"),
+        ("帮助与反馈", "help"),
+    ]
+    FEATURES = [
+        ("bolt", "快速准确", "先进的 AI 语音识别技术，准确率高达 98%+"),
+        ("shield", "安全可靠", "文件加密传输与存储，保护您的隐私安全"),
+        ("file", "多格式支持", "支持多种音频格式，满足不同需求"),
+    ]
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_NAME_ZH}")
-        self.setMinimumSize(1280, 760)
-        self.resize(1420, 800)
+        self.setWindowIcon(make_icon("waveform", "#3f76ff", 24))
+        self.setMinimumSize(1200, 740)
+        self.resize(1420, 820)
 
         self.preferences_path = default_config_file()
         self.preferences = load_preferences(self.preferences_path)
@@ -185,10 +188,18 @@ class MainWindow(QMainWindow):
         self.worker: TranscriptionWorker | None = None
         self.last_doc: TranscriptDocument | None = None
 
+        self._nav_buttons: list[QPushButton] = []
+        self._feature_icons: list[QLabel] = []
+        self._info_dots: list[QLabel] = []
+        self._cards: list[QWidget] = []
+        self._combos: list[StyledComboBox] = []
+        self._progress_anim: QPropertyAnimation | None = None
+
         self._build_ui()
         self._apply_theme()
         self._reload_history()
 
+    # ---- layout -----------------------------------------------------------
     def _build_ui(self) -> None:
         root = QWidget()
         root.setObjectName("RootFrame")
@@ -201,11 +212,13 @@ class MainWindow(QMainWindow):
 
         content = QWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(24, 28, 28, 24)
-        content_layout.setSpacing(24)
+        content_layout.setContentsMargins(28, 24, 28, 24)
+        content_layout.setSpacing(22)
+
+        content_layout.addLayout(self._build_topbar())
 
         top_layout = QHBoxLayout()
-        top_layout.setSpacing(24)
+        top_layout.setSpacing(22)
         left_layout = QVBoxLayout()
         left_layout.setSpacing(18)
         left_layout.addWidget(self._build_upload_card(), 1)
@@ -220,63 +233,80 @@ class MainWindow(QMainWindow):
     def _build_sidebar(self) -> QWidget:
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(240)
+        sidebar.setFixedWidth(236)
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(18, 24, 18, 24)
-        layout.setSpacing(14)
+        layout.setContentsMargins(18, 24, 18, 22)
+        layout.setSpacing(6)
 
-        brand = QLabel("<b>音频转文字</b>")
-        brand.setTextFormat(Qt.RichText)
-        brand.setStyleSheet("font-size: 15px;")
-        layout.addWidget(brand)
-        layout.addSpacing(22)
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(10)
+        self.brand_icon = QLabel()
+        self.brand_icon.setFixedSize(26, 26)
+        brand_text = QLabel("音频转文字")
+        brand_text.setStyleSheet("font-size: 16px; font-weight: 700;")
+        brand_row.addWidget(self.brand_icon)
+        brand_row.addWidget(brand_text)
+        brand_row.addStretch(1)
+        layout.addLayout(brand_row)
+        layout.addSpacing(20)
 
-        nav_items = [
-            ("首页", QStyle.StandardPixmap.SP_DirHomeIcon),
-            ("文件列表", QStyle.StandardPixmap.SP_FileDialogDetailedView),
-            ("历史记录", QStyle.StandardPixmap.SP_BrowserReload),
-            ("设置", QStyle.StandardPixmap.SP_FileDialogContentsView),
-            ("帮助与反馈", QStyle.StandardPixmap.SP_MessageBoxQuestion),
-        ]
-        group: list[QPushButton] = []
-        for index, (text, icon) in enumerate(nav_items):
-            button = QPushButton(text)
+        for index, (text, icon_name) in enumerate(self.NAV_ITEMS):
+            button = QPushButton(f"  {text}")
             button.setObjectName("NavButton")
             button.setCheckable(True)
             button.setChecked(index == 0)
-            button.setIcon(self.style().standardIcon(icon))
-            button.clicked.connect(lambda _=False, current=button: self._select_nav(current, group))
-            group.append(button)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setIconSize(QSize(20, 20))
+            button.setProperty("iconName", icon_name)
+            button.clicked.connect(lambda _=False, current=button: self._select_nav(current))
+            self._nav_buttons.append(button)
             layout.addWidget(button)
         layout.addStretch(1)
 
-        self.theme_button = QPushButton("切换深色")
-        self.theme_button.setObjectName("SecondaryButton")
+        self.theme_button = QPushButton("  深色模式")
+        self.theme_button.setObjectName("NavButton")
+        self.theme_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.theme_button.setIconSize(QSize(20, 20))
         self.theme_button.clicked.connect(self._toggle_theme)
         layout.addWidget(self.theme_button)
-        login = QPushButton("登录 / 注册")
-        login.setObjectName("NavButton")
-        login.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
-        layout.addWidget(login)
+
+        self.login_button = QPushButton("  登录 / 注册")
+        self.login_button.setObjectName("NavButton")
+        self.login_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.login_button.setIconSize(QSize(20, 20))
+        self.login_button.setProperty("iconName", "user")
+        layout.addWidget(self.login_button)
         return sidebar
 
-    def _select_nav(self, current: QPushButton, group: list[QPushButton]) -> None:
-        for button in group:
+    def _build_topbar(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.avatar_button = QPushButton("  账户")
+        self.avatar_button.setObjectName("AvatarButton")
+        self.avatar_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.avatar_button.setFixedHeight(40)
+        self.avatar_button.setIconSize(QSize(18, 18))
+        row.addWidget(self.avatar_button)
+        return row
+
+    def _select_nav(self, current: QPushButton) -> None:
+        for button in self._nav_buttons:
             button.setChecked(button is current)
 
     def _build_upload_card(self) -> QWidget:
         card = QFrame()
         card.setObjectName("PageCard")
+        self._cards.append(card)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(34, 32, 34, 28)
-        layout.setSpacing(18)
+        layout.setContentsMargins(36, 32, 36, 30)
+        layout.setSpacing(16)
 
         title = QLabel("欢迎使用音频转文字")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("font-size: 26px; font-weight: 800;")
         subtitle = QLabel("高效精准的语音识别，轻松将音频转换为文字")
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet("color: #63708a;")
+        subtitle.setObjectName("MutedLabel")
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
@@ -286,25 +316,25 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.drop_zone)
 
         feature_layout = QHBoxLayout()
-        feature_layout.setSpacing(18)
-        for title_text, body_text in [
-            ("快速准确", "先进的 AI 语音识别技术，准确率高达 98%+"),
-            ("安全可靠", "文件加密传输与存储，保护您的隐私安全"),
-            ("多格式支持", "支持多种音频格式，满足不同需求"),
-        ]:
-            feature_layout.addWidget(self._feature_card(title_text, body_text))
+        feature_layout.setSpacing(16)
+        for icon_name, title_text, body_text in self.FEATURES:
+            feature_layout.addWidget(self._feature_card(icon_name, title_text, body_text))
         layout.addLayout(feature_layout)
         return card
 
-    def _feature_card(self, title: str, body: str) -> QWidget:
+    def _feature_card(self, icon_name: str, title: str, body: str) -> QWidget:
         frame = QFrame()
-        frame.setStyleSheet("background: rgba(245, 248, 255, 0.82); border-radius: 12px;")
+        frame.setObjectName("FeatureCard")
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(14, 14, 14, 14)
-        icon = QLabel("◆")
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        icon = QLabel()
         icon.setFixedSize(44, 44)
         icon.setAlignment(Qt.AlignCenter)
-        icon.setStyleSheet("background:#edf3ff;color:#3f76ff;border-radius:10px;font-size:20px;")
+        icon.setProperty("featureIcon", icon_name)
+        self._feature_icons.append(icon)
+
         text = QLabel(f"<b>{title}</b><br><span style='color:#63708a'>{body}</span>")
         text.setTextFormat(Qt.RichText)
         text.setWordWrap(True)
@@ -316,9 +346,10 @@ class MainWindow(QMainWindow):
         self.transcript_card = QFrame()
         self.transcript_card.setObjectName("PageCard")
         self.transcript_card.setVisible(False)
+        self._cards.append(self.transcript_card)
         layout = QVBoxLayout(self.transcript_card)
-        layout.setContentsMargins(22, 18, 22, 22)
-        layout.setSpacing(12)
+        layout.setContentsMargins(24, 20, 24, 22)
+        layout.setSpacing(14)
         header = QHBoxLayout()
         title = QLabel("转录结果")
         title.setStyleSheet("font-size: 18px; font-weight: 700;")
@@ -326,16 +357,20 @@ class MainWindow(QMainWindow):
         header.addStretch(1)
         copy_button = QPushButton("复制全文")
         copy_button.setObjectName("SecondaryButton")
+        copy_button.setCursor(Qt.CursorShape.PointingHandCursor)
         copy_button.clicked.connect(self._copy_transcript)
         header.addWidget(copy_button)
         open_button = QPushButton("打开文件夹")
         open_button.setObjectName("SecondaryButton")
-        open_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.output_dir))))
+        open_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        open_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.output_dir)))
+        )
         header.addWidget(open_button)
         layout.addLayout(header)
         self.transcript_text = QTextEdit()
         self.transcript_text.setReadOnly(True)
-        self.transcript_text.setMinimumHeight(140)
+        self.transcript_text.setMinimumHeight(150)
         layout.addWidget(self.transcript_text)
         return self.transcript_card
 
@@ -348,28 +383,31 @@ class MainWindow(QMainWindow):
 
         card = QFrame()
         card.setObjectName("SettingsCard")
+        self._cards.append(card)
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(26, 24, 26, 24)
-        card_layout.setSpacing(22)
+        card_layout.setContentsMargins(26, 24, 26, 26)
+        card_layout.setSpacing(20)
         heading = QLabel("转录设置")
         heading.setStyleSheet("font-size: 18px; font-weight: 800;")
         card_layout.addWidget(heading)
 
         self.language_combo = self._combo(["中文（普通话）", "自动识别", "English", "粤语"])
         self.model_combo = self._combo(["标准模型（推荐）", "精准模型"])
-        self.speaker_check = ToggleSwitch()
+        self.speaker_check = AnimatedToggle()
         self.speaker_check.setEnabled(False)
-        self.punctuation_check = ToggleSwitch()
+        self.punctuation_check = AnimatedToggle()
         self.punctuation_check.setChecked(True)
         self.format_combo = self._combo(["TXT 文本格式", "Markdown", "SRT 字幕", "JSON 数据", "全部格式"])
 
         card_layout.addLayout(self._setting_row("语言", self.language_combo))
-        card_layout.addLayout(self._setting_row("转录模型", self.model_combo))
-        card_layout.addLayout(self._setting_row("说话人识别", self.speaker_check))
-        card_layout.addLayout(self._setting_row("标点恢复", self.punctuation_check))
+        card_layout.addLayout(self._setting_row("转录模型", self.model_combo, "选择标准或精准识别档位"))
+        card_layout.addLayout(self._setting_row("说话人识别", self.speaker_check, "区分不同发言人（暂未开放）"))
+        card_layout.addLayout(self._setting_row("标点恢复", self.punctuation_check, "自动补全句读标点"))
         card_layout.addLayout(self._setting_row("输出格式", self.format_combo))
-        choose_output = QPushButton(f"保存位置：{self.output_dir}")
+
+        choose_output = QPushButton(self._output_label())
         choose_output.setObjectName("SecondaryButton")
+        choose_output.setCursor(Qt.CursorShape.PointingHandCursor)
         choose_output.clicked.connect(self._choose_output_dir)
         self.output_button = choose_output
         card_layout.addWidget(choose_output)
@@ -377,14 +415,16 @@ class MainWindow(QMainWindow):
 
         self.start_button = QPushButton("开始转录")
         self.start_button.setObjectName("PrimaryButton")
+        self.start_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.start_button.setEnabled(False)
         self.start_button.clicked.connect(self._start_or_cancel)
         layout.addWidget(self.start_button)
         self.status_label = QLabel("请先上传音频文件")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("color: #63708a;")
+        self.status_label.setObjectName("MutedLabel")
         layout.addWidget(self.status_label)
         self.progress_bar = QProgressBar()
+        self.progress_bar.setTextVisible(False)
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
         layout.addStretch(1)
@@ -393,53 +433,118 @@ class MainWindow(QMainWindow):
     def _combo(self, items: list[str]) -> QComboBox:
         combo = StyledComboBox()
         combo.addItems(items)
+        self._combos.append(combo)
         return combo
 
-    def _setting_row(self, label: str, control: QWidget) -> QHBoxLayout:
+    def _setting_row(self, label: str, control: QWidget, hint: str = "") -> QHBoxLayout:
         row = QHBoxLayout()
-        row.setSpacing(14)
-        row.addWidget(QLabel(label))
+        row.setSpacing(10)
+        name = QLabel(label)
+        row.addWidget(name)
+        if hint:
+            dot = QLabel()
+            dot.setFixedSize(15, 15)
+            dot.setToolTip(hint)
+            dot.setProperty("infoDot", True)
+            self._info_dots.append(dot)
+            row.addWidget(dot)
         row.addStretch(1)
-        control.setMinimumWidth(175)
+        if isinstance(control, QComboBox):
+            control.setMinimumWidth(170)
         row.addWidget(control)
         return row
 
     def _build_recent_card(self) -> QWidget:
         card = QFrame()
         card.setObjectName("RecentCard")
+        self._cards.append(card)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 20, 28, 20)
+        layout.setContentsMargins(28, 22, 28, 22)
+        layout.setSpacing(14)
         title_row = QHBoxLayout()
         title = QLabel("最近文件")
         title.setStyleSheet("font-size: 18px; font-weight: 800;")
         title_row.addWidget(title)
         title_row.addStretch(1)
-        all_button = QPushButton("查看全部")
-        all_button.setObjectName("SecondaryButton")
+        all_button = QPushButton("查看全部 ›")
+        all_button.setObjectName("LinkButton")
+        all_button.setCursor(Qt.CursorShape.PointingHandCursor)
         title_row.addWidget(all_button)
         layout.addLayout(title_row)
 
         self.recent_table = QTableWidget(0, 6)
-        self.recent_table.setHorizontalHeaderLabels(["文件名", "时长", "大小", "转录时间", "状态", "操作"])
+        self.recent_table.setHorizontalHeaderLabels(
+            ["文件名", "时长", "大小", "转录时间", "状态", "操作"]
+        )
         self.recent_table.verticalHeader().setVisible(False)
         self.recent_table.setShowGrid(False)
         self.recent_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.recent_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.recent_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.recent_table.verticalHeader().setDefaultSectionSize(52)
         self.recent_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for column in range(1, 6):
-            self.recent_table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-        self.recent_table.setMinimumHeight(142)
+            self.recent_table.horizontalHeader().setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self.recent_table.setMinimumHeight(150)
+        self.recent_table.cellDoubleClicked.connect(self._open_history_output)
         layout.addWidget(self.recent_table)
         return card
 
+    # ---- theming ----------------------------------------------------------
     def _apply_theme(self) -> None:
-        self.setStyleSheet(theme_stylesheet(self.theme_name))
-        self.theme_button.setText("切换浅色" if self.theme_name is ThemeName.DARK else "切换深色")
+        token = get_theme(self.theme_name)
+        self.setStyleSheet(theme_stylesheet(self.theme_name) + self._dynamic_styles(token))
+        is_dark = self.theme_name is ThemeName.DARK
+
+        self.brand_icon.setPixmap(make_icon("waveform", token.primary, 26).pixmap(26, 26))
+        for button in self._nav_buttons:
+            name = button.property("iconName")
+            color = token.primary if button.isChecked() else token.icon
+            button.setIcon(make_icon(name, color, 20))
+        self.theme_button.setText("  浅色模式" if is_dark else "  深色模式")
+        self.theme_button.setIcon(make_icon("sun" if is_dark else "moon", token.icon, 20))
+        self.login_button.setIcon(make_icon("user", token.icon, 20))
+        self.avatar_button.setIcon(make_icon("user", token.primary, 18))
+
+        self.drop_zone.style_icon(token.primary, token.primary_soft)
+        for icon in self._feature_icons:
+            name = icon.property("featureIcon")
+            icon.setPixmap(make_icon(name, token.primary, 22).pixmap(22, 22))
+            icon.setStyleSheet(f"background: {token.primary_soft}; border-radius: 12px;")
+        for dot in self._info_dots:
+            dot.setPixmap(make_icon("info", token.icon, 15).pixmap(15, 15))
+        for combo in self._combos:
+            combo.set_chevron_color(token.icon)
+
+        self.speaker_check.apply_colors(token.primary, token.track, "#ffffff")
+        self.punctuation_check.apply_colors(token.primary, token.track, "#ffffff")
+
+        shadow = token.shadow
+        alpha = 120 if not is_dark else 160
+        for card in self._cards:
+            apply_shadow(card, shadow, blur=36, y_offset=12, alpha=alpha)
+        self._restyle_history_actions(token)
+
+    def _dynamic_styles(self, token) -> str:
+        return f"""
+        #MutedLabel {{ color: {token.muted_text}; }}
+        QLabel[infoDot="true"] {{ }}
+        """
 
     def _toggle_theme(self) -> None:
         self.theme_name = ThemeName.DARK if self.theme_name is ThemeName.LIGHT else ThemeName.LIGHT
         self.preferences = UserPreferences(theme=self.theme_name.value, output_dir=self.output_dir)
         save_preferences(self.preferences, self.preferences_path)
         self._apply_theme()
+
+    # ---- actions ----------------------------------------------------------
+    def _output_label(self) -> str:
+        text = str(self.output_dir)
+        if len(text) > 30:
+            text = "…" + text[-29:]
+        return f"保存位置：{text}"
 
     def _choose_file(self) -> None:
         filters = "Audio Files (" + " ".join(f"*{ext}" for ext in sorted(SUPPORTED_AUDIO_EXTENSIONS)) + ")"
@@ -465,11 +570,13 @@ class MainWindow(QMainWindow):
         path = QFileDialog.getExistingDirectory(self, "选择保存位置", str(self.output_dir))
         if path:
             self.output_dir = Path(path)
-            self.output_button.setText(f"保存位置：{self.output_dir}")
-            save_preferences(UserPreferences(theme=self.theme_name.value, output_dir=self.output_dir), self.preferences_path)
+            self.output_button.setText(self._output_label())
+            save_preferences(
+                UserPreferences(theme=self.theme_name.value, output_dir=self.output_dir),
+                self.preferences_path,
+            )
 
     def _selected_formats(self) -> tuple[str, ...]:
-        value = self.format_combo.currentText()
         mapping = {
             "TXT 文本格式": ("txt",),
             "Markdown": ("md",),
@@ -477,7 +584,7 @@ class MainWindow(QMainWindow):
             "JSON 数据": ("json",),
             "全部格式": ("all",),
         }
-        return mapping[value]
+        return mapping[self.format_combo.currentText()]
 
     def _selected_language(self) -> str | None:
         value = self.language_combo.currentText()
@@ -512,18 +619,32 @@ class MainWindow(QMainWindow):
         self.worker.failed.connect(self._on_failed)
         self.worker.start()
 
+    def _animate_progress(self, target: int) -> None:
+        if self._progress_anim is not None:
+            self._progress_anim.stop()
+        animation = QPropertyAnimation(self.progress_bar, b"value", self)
+        animation.setDuration(280)
+        animation.setStartValue(self.progress_bar.value())
+        animation.setEndValue(target)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.start()
+        self._progress_anim = animation
+
     def _on_progress(self, value: float, message: str) -> None:
-        self.progress_bar.setValue(max(0, min(100, int(value * 100))))
+        self._animate_progress(max(0, min(100, int(value * 100))))
         self.status_label.setText(message)
 
     def _on_completed(self, doc: TranscriptDocument, paths: list[Path]) -> None:
         self.last_doc = doc
         self.start_button.setText("重新转录")
         self.start_button.setEnabled(True)
-        self.progress_bar.setValue(100)
+        self._animate_progress(100)
         self.status_label.setText("转录完成")
+        was_hidden = not self.transcript_card.isVisible()
         self.transcript_card.setVisible(True)
         self.transcript_text.setPlainText(export_txt(doc, self.punctuation_check.isChecked()))
+        if was_hidden:
+            fade_in(self.transcript_card)
         self._add_history(doc, "已完成")
         self._reload_history()
         if paths:
@@ -539,6 +660,7 @@ class MainWindow(QMainWindow):
             self._add_history_failed(self.selected_file, self.selected_audio)
             self._reload_history()
 
+    # ---- history ----------------------------------------------------------
     def _add_history(self, doc: TranscriptDocument, status: str) -> None:
         item = RecentFile(
             file_path=doc.source_file,
@@ -564,27 +686,63 @@ class MainWindow(QMainWindow):
 
     def _reload_history(self) -> None:
         items = self.history_store.load()
+        token = get_theme(self.theme_name)
         self.recent_table.setRowCount(len(items))
         for row, item in enumerate(items):
-            values = [
-                item.file_path.name,
-                item.duration_label,
-                item.size_label,
-                item.transcribed_at,
-                item.status,
-                "打开",
-            ]
-            for column, value in enumerate(values):
-                table_item = QTableWidgetItem(value)
-                if column == 5:
-                    table_item.setData(Qt.ItemDataRole.UserRole, str(item.output_dir))
-                self.recent_table.setItem(row, column, table_item)
-        self.recent_table.cellDoubleClicked.connect(self._open_history_output)
+            name_item = QTableWidgetItem("  " + item.file_path.name)
+            name_item.setIcon(make_icon("music", token.primary, 18))
+            self.recent_table.setItem(row, 0, name_item)
+            for column, value in enumerate(
+                [item.duration_label, item.size_label, item.transcribed_at], start=1
+            ):
+                self.recent_table.setItem(row, column, QTableWidgetItem(value))
+            self.recent_table.setCellWidget(row, 4, self._status_badge(item.status, token))
+            self.recent_table.setCellWidget(row, 5, self._row_actions(item, token))
+
+    def _status_badge(self, status: str, token) -> QWidget:
+        ok = status == "已完成"
+        wrap = QWidget()
+        box = QHBoxLayout(wrap)
+        box.setContentsMargins(8, 0, 8, 0)
+        label = QLabel(status)
+        label.setAlignment(Qt.AlignCenter)
+        bg = token.success_bg if ok else "#fde8e8"
+        fg = token.success_text if ok else "#c0392b"
+        label.setStyleSheet(
+            f"background: {bg}; color: {fg}; border-radius: 10px;"
+            f" padding: 4px 12px; font-size: 12px; font-weight: 600;"
+        )
+        box.addWidget(label, 0, Qt.AlignCenter)
+        return wrap
+
+    def _row_actions(self, item: RecentFile, token) -> QWidget:
+        wrap = QWidget()
+        box = QHBoxLayout(wrap)
+        box.setContentsMargins(4, 0, 4, 0)
+        box.setSpacing(2)
+        open_dir = IconButton("folder", token.icon, 18, 32, tooltip="打开所在文件夹")
+        open_dir.clicked.connect(
+            lambda _=False, path=str(item.output_dir): QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        )
+        file_btn = IconButton("file", token.icon, 18, 32, tooltip="查看转录文件")
+        file_btn.clicked.connect(
+            lambda _=False, path=str(item.output_dir): QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        )
+        more_btn = IconButton("more", token.icon, 18, 32, tooltip="更多")
+        box.addStretch(1)
+        for button in (file_btn, open_dir, more_btn):
+            box.addWidget(button)
+        return wrap
+
+    def _restyle_history_actions(self, token) -> None:
+        # Re-render row widgets so icons/badges follow the active theme.
+        if hasattr(self, "recent_table"):
+            self._reload_history()
 
     def _open_history_output(self, row: int, _column: int) -> None:
-        item = self.recent_table.item(row, 5)
-        if item:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(item.data(Qt.ItemDataRole.UserRole)))
+        items = self.history_store.load()
+        if 0 <= row < len(items):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(items[row].output_dir)))
 
     def _copy_transcript(self) -> None:
         QApplication.clipboard().setText(self.transcript_text.toPlainText())
@@ -606,7 +764,15 @@ def main() -> int:
     app = QApplication.instance() or QApplication([])
     install_app_fonts(app)
     window = MainWindow()
+    window.setWindowOpacity(0.0)
     window.show()
+    window_fade = QPropertyAnimation(window, b"windowOpacity", window)
+    window_fade.setDuration(260)
+    window_fade.setStartValue(0.0)
+    window_fade.setEndValue(1.0)
+    window_fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+    window_fade.start()
+    window._intro_anim = window_fade  # keep alive
     return app.exec()
 
 
