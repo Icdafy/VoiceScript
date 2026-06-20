@@ -1,49 +1,18 @@
-# Python
+.venv/
 __pycache__/
 *.py[cod]
-*.pyd
 .pytest_cache/
-.ruff_cache/
 .mypy_cache/
-*.egg-info/
-.venv/
-venv/
-
-# Build outputs
+.ruff_cache/
 build/
 dist/
-*.spec~
-*.zip
-
-# VoiceScript runtime outputs
-transcripts/
-models/
-.models/
-.cache/
+release/
+*.egg-info/
+*.spec.bak
+transcripts*/
+model-cache/
 *.log
-
-# Local uploaded audio files and user samples
-*.3gp
-*.aac
-*.amr
-*.caf
-*.flac
-*.m4a
-*.mp3
-*.ogg
-*.opus
-*.wav
-
-# Model caches and weights should never be committed
-*.pt
-*.pth
-*.safetensors
-*.onnx
-*.bin
-*.gguf
-
-# OS/editor
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
+*.tmp
+ChatGPT Image*.png
+声笺录obisdian/.obsidian/
+声笺录obisdian/VoiceScript/v0.1*.md

@@ -2,51 +2,38 @@
 
 声落成笺，语转为文。
 
-VoiceScript is a local-first Windows desktop tool for turning uploaded audio files into complete, timestamped text transcripts. V1 does not summarize, rewrite, organize meeting minutes, or perform semantic extraction. It preserves the recognized transcript text in time order.
+VoiceScript v0.2.0 是从零重写的 Windows 桌面音频转文字工具。它只做完整转录：上传苹果或安卓录音文件，通过 Qwen3-ASR 输出按时间分段的文字内容，不总结、不整理纪要、不语义改写。
 
-## V1 Features
+## v0.2.0 功能
 
-- Upload full audio files from Apple and Android workflows: `.m4a`, `.aac`, `.caf`, `.amr`, `.3gp`, `.ogg`, `.opus`, `.mp3`, `.wav`, `.flac`.
-- Uploaded audio starts transcription automatically with the currently selected model.
-- Long audio is processed in chunks so the UI keeps reporting progress instead of looking frozen.
-- Choose between two strongest configured ASR options:
-  - `Whisper large-v3` from OpenAI Whisper.
-  - `Qwen3-ASR-1.7B` with `Qwen3-ForcedAligner-0.6B` timestamps.
-- Export complete time-segmented transcripts as `.md`, `.txt`, `.srt`, and `.json`.
-- Save transcript artifacts into the Obsidian knowledge folder `F:\声笺录\声笺录\VoiceScript`.
-- Toggle black and white UI themes.
-- Check local runtime status for Python, ffmpeg, ffprobe, Torch/CUDA, disk space, and model-cache readiness.
-
-## Hardware Note
-
-The target machine currently has an RTX 3060 Laptop GPU with about 4GB VRAM. VoiceScript keeps the selected model identity, but it may fall back to CPU or low-batch behavior when GPU memory is too small for `Whisper large-v3` or Qwen timestamp alignment. CPU fallback is slower, especially for long audio.
-
-For multi-hour audio, v0.1.1 and later show chunk-level progress while transcription is running. First model download can still take time because model weights are not bundled in the release.
-
-v0.1.2 fixes the Windows package so Whisper and Qwen runtime assets are included in the app folder. Model weights are still downloaded into the user cache instead of being committed or bundled.
-
-v0.1.3 fixes stalled first-run model setup: Qwen downloads the ASR model and forced aligner explicitly with UI progress, Whisper removes broken zero-byte checkpoints and downloads large-v3 through a more reliable streaming HTTP path, and progress bars no longer move backward between loading and transcription.
+- Windows 桌面 UI：左侧导航、中央上传区、右侧转录设置、最近文件表。
+- 黑色 / 白色主题切换，并持久化到用户配置。
+- 支持 `.m4a`、`.aac`、`.caf`、`.amr`、`.3gp`、`.ogg`、`.opus`、`.mp3`、`.wav`、`.flac`。
+- 标准模型：`Qwen/Qwen3-ASR-0.6B` + `Qwen/Qwen3-ForcedAligner-0.6B`。
+- 精准模型：`Qwen/Qwen3-ASR-1.7B` + `Qwen/Qwen3-ForcedAligner-0.6B`。
+- 导出 TXT、Markdown、SRT、JSON，或一次导出全部格式。
+- CLI 与桌面端共享同一套转录、导出和配置逻辑。
 
 ## Quick Start
 
 ```powershell
-cd F:\声笺录\VoiceScript
-python -m venv .venv
+cd F:\声笺录
+py -3.12 -m venv .venv
 .\.venv\Scripts\python -m pip install --upgrade pip
 .\.venv\Scripts\python -m pip install -e .[dev]
 .\.venv\Scripts\python -m voicescript env
-.\.venv\Scripts\python -m voicescript.desktop
+.\.venv\Scripts\python -m voicescript.ui
 ```
 
-Command-line transcription:
+CLI 转录：
 
 ```powershell
 .\.venv\Scripts\python -m voicescript transcribe `
-  --model whisper-large-v3 `
   --input "F:\path\audio.m4a" `
-  --out "F:\声笺录\VoiceScript\transcripts" `
-  --formats md,txt,srt,json `
-  --obsidian
+  --out "F:\声笺录\transcripts" `
+  --formats txt,md,srt,json `
+  --model standard `
+  --language auto
 ```
 
 ## Windows Build
@@ -55,23 +42,16 @@ Command-line transcription:
 .\scripts\build-windows.ps1
 ```
 
-The local development release folder is generated under `F:\声笺录\VoiceScript\dist\VoiceScript`.
+输出文件：
 
-## What V1 Intentionally Does Not Do
+```text
+release\VoiceScript-v0.2.0-windows-x64.zip
+```
 
-- No meeting minutes.
-- No summaries.
-- No semantic restructuring.
-- No speaker diarization.
-- No real-time microphone transcription.
-- No bundled model weights in GitHub or the Windows release.
+模型权重不会提交到 GitHub，也不会放入 release zip。首次使用模型时由 `qwen-asr` 下载到用户缓存。
 
-These may be future roadmap items, but they are outside the current release.
+## Sources
 
-## Model Sources
-
-- OpenAI Whisper: <https://github.com/openai/whisper>, `large-v3`, MIT license.
-- Qwen3-ASR: <https://github.com/QwenLM/Qwen3-ASR>, `Qwen/Qwen3-ASR-1.7B`, Apache-2.0 license.
-- Qwen3-ASR blog: <https://qwen.ai/blog?id=qwen3asr>.
-
-See [NOTICE.md](NOTICE.md) for third-party notices.
+- Qwen3-ASR: <https://github.com/QwenLM/Qwen3-ASR>
+- Qwen3-ASR blog: <https://qwen.ai/blog?id=qwen3asr>
+- Hugging Face collection: <https://huggingface.co/collections/Qwen/qwen3-asr>

@@ -1,24 +1,64 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from voicescript.build_support import collect_asr_datas, collect_asr_hiddenimports
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
-hiddenimports = collect_asr_hiddenimports()
-datas = collect_asr_datas()
+
+block_cipher = None
+binaries = []
+datas = []
+hiddenimports = []
+
+qwen_hiddenimports = [
+    "qwen_asr",
+    "qwen_asr.inference",
+    "qwen_asr.inference.qwen3_asr",
+    "qwen_asr.inference.qwen3_forced_aligner",
+    "qwen_asr.inference.utils",
+    "qwen_asr.core",
+    "qwen_asr.core.transformers_backend",
+    "qwen_asr.core.transformers_backend.configuration_qwen3_asr",
+    "qwen_asr.core.transformers_backend.modeling_qwen3_asr",
+    "qwen_asr.core.transformers_backend.processing_qwen3_asr",
+]
+hiddenimports += qwen_hiddenimports
+datas += [(".venv/Lib/site-packages/qwen_asr/inference/assets", "qwen_asr/inference/assets")]
+
+for package in [
+    "transformers",
+    "accelerate",
+    "librosa",
+    "soundfile",
+    "numpy",
+    "torch",
+]:
+    package_datas, package_binaries, package_hiddenimports = collect_all(package)
+    datas += package_datas
+    binaries += package_binaries
+    hiddenimports += package_hiddenimports
+
+for package in ["qwen-asr", "transformers", "accelerate", "torch"]:
+    try:
+        datas += copy_metadata(package)
+    except Exception:
+        pass
+
 
 a = Analysis(
-    ["voicescript/desktop/app.py"],
+    ["voicescript/ui/app.py"],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=["vllm", "gradio", "flask", "notebook", "jupyter"],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
     noarchive=False,
 )
-pyz = PYZ(a.pure)
-
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
@@ -28,7 +68,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -39,9 +79,10 @@ exe = EXE(
 coll = COLLECT(
     exe,
     a.binaries,
+    a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name="VoiceScript",
 )
