@@ -16,11 +16,15 @@
 
 ## 关于本次安装包（重要）
 
-- 本次发布的 `VoiceScript-v0.2.4-windows-x64-gpu.zip` 是 **GPU（CUDA）版**，捆绑了 CUDA 运行时，
-  **仅适用于带 NVIDIA 显卡（且驱动支持 CUDA 12.x）的 Windows 机器**，体积较大（约 3–4GB）。
-- 在带 NVIDIA 显卡的机器上，双击 `VoiceScript.exe` 即自动使用 GPU 加速。
-- **无 NVIDIA 显卡的机器请勿使用本 GPU 包**（无法回退到 CPU）；这类机器请从源码运行 CPU 版，
-  或使用早期的 CPU 安装包。
+- 本次发布的 `VoiceScript-v0.2.4-windows-x64-gpu.tar.zst` 是 **GPU（CUDA）版**，捆绑了 CUDA 运行时，
+  **仅适用于带 NVIDIA 显卡（且驱动支持 CUDA 12.x）的 Windows 机器**。压缩包约 1.8GB，解压后约 4.5GB。
+- 采用 `.tar.zst` 是为了在 GitHub Release 单文件 2GiB 上限内塞下完整 CUDA 运行时。
+- 解压方法（任选其一）：
+  - Windows 11（24H2+）资源管理器右键「全部解压」；
+  - 命令行：`tar -xf VoiceScript-v0.2.4-windows-x64-gpu.tar.zst`；
+  - 或用 7-Zip / WinRAR。
+- 解压后进入 `VoiceScript` 文件夹，双击 `VoiceScript.exe`，在带 NVIDIA 显卡的机器上即自动使用 GPU 加速。
+- **无 NVIDIA 显卡的机器请勿使用本 GPU 包**（无法回退到 CPU）；这类机器请从源码运行，或使用早期的 CPU 安装包。
 
 ## 兼容性
 
@@ -29,4 +33,4 @@
 
 ## 发布文件
 
-- `VoiceScript-v0.2.4-windows-x64.zip`
+- `VoiceScript-v0.2.4-windows-x64-gpu.tar.zst`（GPU / NVIDIA 版，约 1.8GB）
