@@ -14,10 +14,13 @@
 - **深色模式改为纯黑背景**（`#000000`），卡片为近黑色，去除残留浅色块。
 - **Windows 标题栏同步深色**：深色模式下顶部标题栏不再是白条（DWM 沉浸式深色）。
 
-## 说明
+## 关于本次安装包（重要）
 
-- 打包的 .exe 默认捆绑 CPU 版 PyTorch，因此安装包始终走 CPU；从源码运行（已装 CUDA torch 的 venv）才会使用 GPU。
-  如需可用 GPU 的安装包，需用装有 CUDA torch 的环境重新打包（体积更大，且仅适用于带 NVIDIA 显卡的机器）。
+- 本次发布的 `VoiceScript-v0.2.4-windows-x64-gpu.zip` 是 **GPU（CUDA）版**，捆绑了 CUDA 运行时，
+  **仅适用于带 NVIDIA 显卡（且驱动支持 CUDA 12.x）的 Windows 机器**，体积较大（约 3–4GB）。
+- 在带 NVIDIA 显卡的机器上，双击 `VoiceScript.exe` 即自动使用 GPU 加速。
+- **无 NVIDIA 显卡的机器请勿使用本 GPU 包**（无法回退到 CPU）；这类机器请从源码运行 CPU 版，
+  或使用早期的 CPU 安装包。
 
 ## 兼容性
 
