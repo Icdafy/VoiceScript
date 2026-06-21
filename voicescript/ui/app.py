@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ from PySide6.QtCore import (
     QPropertyAnimation,
     QSize,
     Qt,
+    QThread,
     QUrl,
     Signal,
 )
@@ -162,6 +164,26 @@ class UploadDropZone(QFrame):
                 break
 
 
+class DeviceProbe(QThread):
+    """Detect whether transcription will run on GPU or CPU, off the UI thread."""
+
+    resolved = Signal(str)
+
+    def run(self) -> None:  # type: ignore[override]
+        try:
+            from voicescript.asr.qwen import prepare_qwen_runtime
+
+            prepare_qwen_runtime()
+            import torch
+
+            if torch.cuda.is_available():
+                self.resolved.emit(f"运算设备：GPU 加速 · {torch.cuda.get_device_name(0)}")
+            else:
+                self.resolved.emit("运算设备：CPU 运算（未检测到可用 GPU，速度较慢）")
+        except Exception:
+            self.resolved.emit("运算设备：检测失败")
+
+
 class MainWindow(QMainWindow):
     NAV_ITEMS = [
         ("首页", "home"),
@@ -191,6 +213,7 @@ class MainWindow(QMainWindow):
         self.output_dir = self.preferences.output_dir or Path.cwd() / "transcripts"
         self.worker: TranscriptionWorker | None = None
         self.last_doc: TranscriptDocument | None = None
+        self._transcribe_start = 0.0
 
         self._nav_buttons: list[QPushButton] = []
         self._feature_icons: list[QLabel] = []
@@ -202,6 +225,10 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._apply_theme()
         self._reload_history()
+
+        self._device_probe = DeviceProbe(self)
+        self._device_probe.resolved.connect(self._on_device_resolved)
+        self._device_probe.start()
 
     # ---- layout -----------------------------------------------------------
     def _build_ui(self) -> None:
@@ -448,6 +475,11 @@ class MainWindow(QMainWindow):
         self.progress_bar.setFormat("%p%")
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
+        self.device_label = QLabel("运算设备：检测中…")
+        self.device_label.setAlignment(Qt.AlignCenter)
+        self.device_label.setObjectName("MutedLabel")
+        self.device_label.setWordWrap(True)
+        layout.addWidget(self.device_label)
         layout.addStretch(1)
         return panel
 
@@ -646,10 +678,31 @@ class MainWindow(QMainWindow):
         self.punctuation_check.apply_colors(token.primary, token.track, "#ffffff")
 
         shadow = token.shadow
-        alpha = 120 if not is_dark else 160
+        alpha = 120 if not is_dark else 220
         for card in self._cards:
             apply_shadow(card, shadow, blur=36, y_offset=12, alpha=alpha)
         self._restyle_history_actions(token)
+        self._apply_titlebar_theme()
+
+    def _apply_titlebar_theme(self) -> None:
+        """Match the native Windows title bar to the active theme (Win10/11)."""
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+
+            hwnd = int(self.winId())
+            flag = ctypes.c_int(1 if self.theme_name is ThemeName.DARK else 0)
+            for attribute in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE (20 = Win10 2004+/Win11)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, attribute, ctypes.byref(flag), ctypes.sizeof(flag)
+                )
+        except Exception:
+            pass
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        self._apply_titlebar_theme()
 
     def _dynamic_styles(self, token) -> str:
         return f"""
@@ -736,6 +789,7 @@ class MainWindow(QMainWindow):
         )
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
+        self._transcribe_start = 0.0
         self.start_button.setText("取消转录")
         self.status_label.setText("准备转录...")
         self.worker = TranscriptionWorker(config, use_mock=os.environ.get("VOICESCRIPT_USE_MOCK_ASR") == "1")
@@ -757,7 +811,32 @@ class MainWindow(QMainWindow):
 
     def _on_progress(self, value: float, message: str) -> None:
         self._animate_progress(max(0, min(100, int(value * 100))))
-        self.status_label.setText(message)
+        now = time.monotonic()
+        if value >= 0.1 and not self._transcribe_start:
+            self._transcribe_start = now
+        text = message
+        if self._transcribe_start and 0.1 < value < 0.96:
+            frac = (value - 0.1) / (0.95 - 0.1)
+            if frac > 0.03:
+                elapsed = now - self._transcribe_start
+                remain = elapsed * (1 - frac) / frac
+                text = f"{message}\n预计剩余约 {self._format_eta(remain)}"
+        self.status_label.setText(text)
+
+    @staticmethod
+    def _format_eta(seconds: float) -> str:
+        seconds = int(max(0, seconds))
+        if seconds < 60:
+            return f"{seconds} 秒"
+        minutes, sec = divmod(seconds, 60)
+        if minutes < 60:
+            return f"{minutes} 分 {sec:02d} 秒"
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours} 小时 {minutes:02d} 分"
+
+    def _on_device_resolved(self, text: str) -> None:
+        if hasattr(self, "device_label"):
+            self.device_label.setText(text)
 
     def _on_completed(self, doc: TranscriptDocument, paths: list[Path]) -> None:
         self.last_doc = doc

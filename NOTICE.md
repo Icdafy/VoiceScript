@@ -1,6 +1,6 @@
 # Notices
 
-VoiceScript 声笺录 v0.2.3 is an original rewrite by Icdafy.
+VoiceScript 声笺录 v0.2.4 is an original rewrite by Icdafy.
 
 Third-party runtime dependencies include:
 

@@ -7,7 +7,7 @@ def test_light_and_dark_themes_define_reference_surface_tokens():
 
     assert light.background == "#f7faff"
     assert light.primary == "#3f76ff"
-    assert dark.background == "#0d1117"
+    assert dark.background == "#000000"
     assert dark.primary == "#78a0ff"
 
 

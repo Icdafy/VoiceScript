@@ -49,7 +49,8 @@ MODEL_PROFILES = {
         asr_checkpoint="Qwen/Qwen3-ASR-0.6B",
         aligner_checkpoint="Qwen/Qwen3-ForcedAligner-0.6B",
         max_new_tokens=512,
-        max_inference_batch_size=8,
+        # Keep small so the 0.6B ASR + aligner fit on 6GB laptop GPUs without OOM.
+        max_inference_batch_size=4,
     ),
     QwenModelProfile.PRECISE: QwenProfileConfig(
         label="精准模型",

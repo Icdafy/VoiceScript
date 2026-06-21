@@ -2,7 +2,18 @@
 
 声落成笺，语转为文。
 
-VoiceScript v0.2.3 是从零重写的 Windows 桌面音频转文字工具。它只做完整转录：上传苹果或安卓录音文件，通过 Qwen3-ASR 输出按时间分段的文字内容，不总结、不整理纪要、不语义改写。
+VoiceScript v0.2.4 是从零重写的 Windows 桌面音频转文字工具。它只做完整转录：上传苹果或安卓录音文件，通过 Qwen3-ASR 输出按时间分段的文字内容，不总结、不整理纪要、不语义改写。
+
+## v0.2.4 更新
+
+- 新增「运算设备」指示：界面显示当前使用 GPU 加速还是 CPU 运算。
+- 转录进度新增「预计剩余时间」估算。
+- 深色模式改为纯黑背景，并将 Windows 标题栏同步为深色（不再有顶部白条）。
+- 为 6GB 显存的笔记本 GPU 下调标准模型推理 batch，降低显存溢出风险。
+
+> GPU 加速说明：需安装 CUDA 版 PyTorch，例如
+> `pip install torch==2.12.1+cu126 --index-url https://download.pytorch.org/whl/cu126`，
+> 程序会自动检测并使用 NVIDIA 显卡；未安装时自动回退到 CPU。
 
 ## v0.2.3 更新
 
@@ -68,7 +79,7 @@ CLI 转录：
 输出文件：
 
 ```text
-release\VoiceScript-v0.2.3-windows-x64.zip
+release\VoiceScript-v0.2.4-windows-x64.zip
 ```
 
 模型权重不会提交到 GitHub，也不会放入 release zip。首次使用模型时由 `qwen-asr` 下载到用户缓存。
